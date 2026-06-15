@@ -1,3 +1,8 @@
+const http = require('http');
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Solana Bot is Alive\n');
+}).listen(process.env.PORT || 3000);
 const axios = require('axios');
 require('dotenv').config();
 const { Telegraf } = require('telegraf');
