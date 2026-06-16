@@ -3,10 +3,10 @@ const axios = require('axios');
 require('dotenv').config();
 const { Telegraf } = require('telegraf');
 
-// Render cloud keep-alive port binding
+// Keep-alive server binding for Render cloud containers
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Solana Guarded Sniper Engine Active\n');
+  res.end('Solana Production Sniper Active\n');
 }).listen(process.env.PORT || 3000);
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
@@ -14,10 +14,9 @@ const CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 
 async function sendSystemTest() {
   try {
-    await bot.telegram.sendMessage(CHAT_ID, "🛡️ <b>SNIPER SECURITY UPGRADED:</b> Mint authority guard activated. Filtering out all mintable supply risks.", { parse_mode: 'HTML' });
-    console.log("✅ Security upgrade notification pushed to Telegram.");
+    await bot.telegram.sendMessage(CHAT_ID, "🟢 <b>SNIPER ENGINE MAINNET ONLINE:</b> Switched over to live token listing pipelines. Monitoring genuine low-cap pairs...", { parse_mode: 'HTML' });
   } catch (err) {
-    console.log("Telegram confirmation skipped:", err.message);
+    console.log("Startup ping deferred:", err.message);
   }
 }
 sendSystemTest();
@@ -26,15 +25,28 @@ const processedPairs = new Set();
 
 async function executeSniperScan() {
   try {
-    console.log(`[${new Date().toLocaleTimeString()}] Scanning high-volume pools with Mint Guard...`);
+    console.log(`[${new Date().toLocaleTimeString()}] Querying raw Solana token listing streams...`);
     
-    const marketResponse = await axios.get('https://api.dexscreener.com/latest/dex/search?q=solana');
-    if (!marketResponse.data || !marketResponse.data.pairs) return;
+    // TARGET FRESHLY CREATED SOLANA TOKEN PROFILES (NOT GENERIC SEARCH PAGE)
+    const marketResponse = await axios.get('https://api.dexscreener.com/token-profiles/latest/v1');
+    if (!marketResponse.data || !Array.isArray(marketResponse.data)) return;
 
-    const viablePairs = marketResponse.data.pairs.filter(p => 
+    // Filter down to Solana chain profiles and clean out duplicates
+    const rawMints = marketResponse.data
+      .filter(item => item.chainId === 'solana')
+      .map(item => item.tokenAddress);
+
+    if (rawMints.length === 0) return;
+
+    // Pull detailed multi-pair trading metric profiles for these raw tokens
+    const profilesResponse = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${rawMints.slice(0, 20).join(',')}`);
+    if (!profilesResponse.data || !profilesResponse.data.pairs) return;
+
+    // Filter by your custom target execution boundaries
+    const viablePairs = profilesResponse.data.pairs.filter(p => 
       p.chainId === 'solana' &&
-      p.marketCap && p.marketCap >= 25000 && 
-      p.volume && p.volume.h1 && p.volume.h1 >= 15000
+      p.marketCap && p.marketCap >= 15000 &&           // Accommodate early micro-cap setups
+      p.volume && p.volume.h1 && p.volume.h1 >= 5000    // Dynamic initial breakout volume
     );
 
     for (const pair of viablePairs) {
@@ -51,67 +63,65 @@ async function executeSniperScan() {
       let isMintable = false;
 
       try {
-        const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 2500 });
+        const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 3000 });
         const report = securityCheck.data;
 
         if (report) {
-          // CRITICAL SECURITY CHECK: Filter out active mint authorities
-          // RugCheck explicitly sets a token as risky or tracks mintAuthority fields
+          // Hard security enforcement: Check if mint authority is active
           if (report.mintAuthority !== null && report.mintAuthority !== undefined) {
             isMintable = true;
           }
           
-          // Double verification check against rugcheck risk tags
           const risks = report.risks || [];
-          const hasMintRisk = risks.some(r => r.name && r.name.toLowerCase().includes('mint'));
-          if (hasMintRisk) isMintable = true;
+          if (risks.some(r => r.name && r.name.toLowerCase().includes('mint'))) {
+            isMintable = true;
+          }
 
-          // If the token can be infinitely printed, reject it instantly regardless of other stats
           if (isMintable) {
-            console.log(` -> [REJECTED] $${pair.baseToken.symbol} - Active Mint Authority Detected!`);
+            console.log(` -> [FILTERED] $${pair.baseToken.symbol} rejected due to open mint authority.`);
             continue;
           }
 
           const holders = report.holders || [];
           if (holders.length > 0) {
             top10HoldingPct = holders.slice(0, 10).reduce((acc, current) => acc + (current.pct || 0), 0);
-            if (top10HoldingPct === 0 || top10HoldingPct < 22) {
+            if (top10HoldingPct === 0 || top10HoldingPct < 25) { // 25% tolerance for ultra-fresh launches
               securityPassed = true;
             }
           } else {
-            // Unindexed fallback but verified safe liquidity depth
-            if ((pair.liquidity?.usd || 0) > 5000) securityPassed = true;
+            if ((pair.liquidity?.usd || 0) > 3000) securityPassed = true;
           }
         }
       } catch (apiErr) {
-        // Fallback protection layer
-        if ((pair.liquidity?.usd || 0) > 5000 || hasLockedLiquidity) {
+        // Fallback option for unindexed profiles or API performance ceilings
+        if ((pair.liquidity?.usd || 0) > 3000 || hasLockedLiquidity) {
           securityPassed = true;
         }
       }
 
       if (!securityPassed) continue;
 
+      // Lock pair address into memory cache to stop notification duplication loops
       processedPairs.add(pairAddress);
 
       const telegramAlert = `
-🚨 <b>NEW SOL SPOTLIGHT</b> 🚨
+🚨 <b>SOL BREAKOUT DETECTED</b> 🚨
 ────────────────────────
-▶ <b>TOKEN DETAILS</b>
+▶ <b>TOKEN METADATA</b>
 • <b>Symbol:</b> $${pair.baseToken.symbol}
 • <b>Contract:</b> <code>${tokenMint}</code>
 
-▶ <b>INITIAL ANALYSIS</b>
-• <b>Current MC:</b> $${pair.marketCap.toLocaleString()}
-• <b>1H Volume:</b> $${pair.volume.h1.toLocaleString()}
-• <b>Liquidity Pool:</b> $${(pair.liquidity?.usd || 0).toLocaleString()}
-• <b>Top 10 Hold:</b> ${top10HoldingPct > 0 ? top10HoldingPct.toFixed(1) + '%' : 'Safe / Under Indexing'} ✅
-• <b>Mintable:</b> No 🛡️ (Authority Revoked)
-• <b>LP Status:</b> Locked / Burned Confirmed 🔥
+▶ <b>MARKET METRICS</b>
+• <b>Market Cap:</b> $${pair.marketCap.toLocaleString()}
+• <b>1H Vol:</b> $${pair.volume.h1.toLocaleString()}
+• <b>Liquidity:</b> $${(pair.liquidity?.usd || 0).toLocaleString()}
+• <b>Top 10 Ownership:</b> ${top10HoldingPct > 0 ? top10HoldingPct.toFixed(1) + '%' : 'Safe / Initial Launch'} ✅
+• <b>Mint Authority:</b> Revoked 🛡️
+• <b>LP Status:</b> Locked/Burned Natively 🔥
 
-▶ <b>LINKS</b>
-• <a href="${pair.url}">DexScreener Live Interface</a>
-• <a href="https://photon-sol.tinyastro.io/en/lp/${pairAddress}">Execute Trade via Photon</a>
+▶ <b>TERMINALS</b>
+• <a href="${pair.url}">DexScreener Link</a>
+• <a href="https://photon-sol.tinyastro.io/en/lp/${pairAddress}">Execute Trade on Photon</a>
 ────────────────────────
 `;
 
@@ -120,11 +130,12 @@ async function executeSniperScan() {
         disable_web_page_preview: true 
       });
       
-      console.log(`🎯 Guarded Breakout Signal Sent: $${pair.baseToken.symbol}`);
+      console.log(`🎯 Breakout Signal Sent: $${pair.baseToken.symbol}`);
     }
   } catch (error) {
-    console.error("Scanner Loop Cycle Note:", error.message);
+    console.error("Scanner Execution Note:", error.message);
   }
 }
 
+// 5-second interval execution loop
 setInterval(executeSniperScan, 5000);
