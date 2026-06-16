@@ -3,19 +3,23 @@ const axios = require('axios');
 require('dotenv').config();
 const { Telegraf } = require('telegraf');
 
-// Keep-alive server binding for Render cloud containers
+// Force alignment with Render's required web service internal port mapping
+const PORT = process.env.PORT || 10000;
+
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Solana Whale Sniper Engine Active\n');
-}).listen(process.env.PORT || 3000);
+  res.end('Solana Active Whale Sniper Active\n');
+}).listen(PORT, '0.0.0.0', () => {
+  console.log(`📡 Keep-alive web layer bound cleanly to port ${PORT}`);
+});
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 
 async function sendSystemTest() {
   try {
-    await bot.telegram.sendMessage(CHAT_ID, "🐋 <b>WHALE & MOMENTUM ENGINE ONLINE:</b> Scan stream configured for strict 65%+ Buys and institutional buy order tracking.", { parse_mode: 'HTML' });
-    console.log("✅ Whale tracking system initialized.");
+    await bot.telegram.sendMessage(CHAT_ID, "🐋 <b>HIGH-ACTIVITY MOMENTUM ENGINE LIVE:</b> Buy gate optimized to 58%+ for increased trade flow scanning.", { parse_mode: 'HTML' });
+    console.log("✅ High-activity configuration initialized.");
   } catch (err) {
     console.log("Startup alert deferred:", err.message);
   }
@@ -26,7 +30,7 @@ const processedPairs = new Set();
 
 async function executeSniperScan() {
   try {
-    console.log(`[${new Date().toLocaleTimeString()}] Querying raw listing streams for whale momentum...`);
+    console.log(`[${new Date().toLocaleTimeString()}] Scanning active high-volume streams...`);
     
     let marketResponse;
     try {
@@ -56,11 +60,11 @@ async function executeSniperScan() {
 
     if (!profilesResponse.data || !profilesResponse.data.pairs) return;
 
-    // Filter baseline financial boundaries
+    // OPTIMIZED FILTERS: Lowered volume bar to $2,000 to catch earlier micro-caps
     const viablePairs = profilesResponse.data.pairs.filter(p => 
       p.chainId === 'solana' &&
-      p.marketCap && p.marketCap >= 15000 && 
-      p.volume && p.volume.h1 && p.volume.h1 >= 4000
+      p.marketCap && p.marketCap >= 10000 && 
+      p.volume && p.volume.h1 && p.volume.h1 >= 2000
     );
 
     for (const pair of viablePairs) {
@@ -69,23 +73,21 @@ async function executeSniperScan() {
 
       if (processedPairs.has(pairAddress)) continue;
 
-      // 1. BUYER vs SELLER RATE FILTERS (1-Hour Window)
       const hourlyTxns = pair.txns?.h1;
       if (!hourlyTxns || !hourlyTxns.buys || !hourlyTxns.sells) continue;
 
       const totalTrades = hourlyTxns.buys + hourlyTxns.sells;
-      if (totalTrades < 10) continue; // Guarantee statistical relevance
+      if (totalTrades < 5) continue; 
 
       const buyRatioPct = (hourlyTxns.buys / totalTrades) * 100;
       const sellRatioPct = (hourlyTxns.sells / totalTrades) * 100;
 
-      // CRITICAL MOMENTUM GATE: Must hit minimum 65% buys (Max 35% sells)
-      if (buyRatioPct < 65.0) {
-        console.log(` -> [SKIPPED] $${pair.baseToken.symbol} failed ratio checkpoint (${buyRatioPct.toFixed(1)}% Buys)`);
+      // ADJUSTED ACTION GATE: Now set to 58% to allow high-potential volume runs through
+      if (buyRatioPct < 58.0) {
+        console.log(` -> [SKIPPED] $${pair.baseToken.symbol} under 58% buy momentum (${buyRatioPct.toFixed(1)}% Buys)`);
         continue;
       }
 
-      // 2. WHALE PROFILE DETECTION SCORING
       const hourlyVolume = pair.volume?.h1 || 0;
       const averageOrderSize = hourlyVolume / totalTrades;
       const priceChangeH1 = pair.priceChange?.h1 || 0;
@@ -108,22 +110,21 @@ async function executeSniperScan() {
           const holders = report.holders || [];
           if (holders.length > 0) {
             top10HoldingPct = holders.slice(0, 10).reduce((acc, current) => acc + (current.pct || 0), 0);
-            if (top10HoldingPct === 0 || top10HoldingPct < 25) securityPassed = true;
+            if (top10HoldingPct === 0 || top10HoldingPct < 30) securityPassed = true;
           } else {
-            if ((pair.liquidity?.usd || 0) > 3000) securityPassed = true;
+            if ((pair.liquidity?.usd || 0) > 2000) securityPassed = true;
           }
         }
       } catch (apiErr) {
-        if ((pair.liquidity?.usd || 0) > 3000) securityPassed = true;
+        if ((pair.liquidity?.usd || 0) > 2000) securityPassed = true;
       }
 
       if (!securityPassed) continue;
 
       processedPairs.add(pairAddress);
 
-      // Advanced data display layout
       const telegramAlert = `
-🐋 <b>MOMENTUM & WHALE SPOTLIGHT</b> 🐋
+🐋 <b>MOMENTUM & WHALE RADAR</b> 🐋
 ────────────────────────
 ▶ <b>TOKEN METADATA</b>
 • <b>Symbol:</b> $${pair.baseToken.symbol}
@@ -132,7 +133,7 @@ async function executeSniperScan() {
 ▶ <b>VOLUME & RATIO RADAR</b>
 • <b>1H Tx Split:</b> 🟢 ${buyRatioPct.toFixed(1)}% Buy / 🔴 ${sellRatioPct.toFixed(1)}% Sell
 • <b>1H Price Velocity:</b> ${priceChangeH1 >= 0 ? '📈 +' : '📉 '}${priceChangeH1}%
-• <b>Whale Footprint:</b> ${averageOrderSize > 120 ? '👑 WHALE ACCUMULATION DETECTED' : '👥 Distributed Retail Flow'}
+• <b>Whale Footprint:</b> ${averageOrderSize > 100 ? '👑 WHALE ACCUMULATION DETECTED' : '👥 Distributed Retail Flow'}
 
 ▶ <b>FINANCIAL METRICS</b>
 • <b>Market Cap:</b> $${pair.marketCap.toLocaleString()}
@@ -152,7 +153,7 @@ async function executeSniperScan() {
         disable_web_page_preview: true 
       });
       
-      console.log(`🎯 Whale Breakout Signal Sent: $${pair.baseToken.symbol}`);
+      console.log(`🎯 Breakout Signal Sent: $${pair.baseToken.symbol}`);
     }
   } catch (error) {
     console.log("Scanner loop variance skipped safely:", error.message);
