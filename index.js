@@ -6,7 +6,7 @@ const { Telegraf } = require('telegraf');
 // Keep-alive server binding for Render cloud containers
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Solana Production Sniper Active\n');
+  res.end('Solana Guarded Sniper Online\n');
 }).listen(process.env.PORT || 3000);
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
@@ -14,9 +14,10 @@ const CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 
 async function sendSystemTest() {
   try {
-    await bot.telegram.sendMessage(CHAT_ID, "🟢 <b>SNIPER ENGINE MAINNET ONLINE:</b> Switched over to live token listing pipelines. Monitoring genuine low-cap pairs...", { parse_mode: 'HTML' });
+    await bot.telegram.sendMessage(CHAT_ID, "🟢 <b>SNIPER CRASH-SHIELD ONLINE:</b> Pipeline initialized safely. Monitoring micro-cap tokens with strict exception handling...", { parse_mode: 'HTML' });
+    console.log("✅ Startup ping successfully pushed to Telegram.");
   } catch (err) {
-    console.log("Startup ping deferred:", err.message);
+    console.log("⚠️ Startup ping deferred:", err.message);
   }
 }
 sendSystemTest();
@@ -25,28 +26,51 @@ const processedPairs = new Set();
 
 async function executeSniperScan() {
   try {
-    console.log(`[${new Date().toLocaleTimeString()}] Querying raw Solana token listing streams...`);
+    console.log(`[${new Date().toLocaleTimeString()}] Querying latest listing profiles...`);
     
-    // TARGET FRESHLY CREATED SOLANA TOKEN PROFILES (NOT GENERIC SEARCH PAGE)
-    const marketResponse = await axios.get('https://api.dexscreener.com/token-profiles/latest/v1');
-    if (!marketResponse.data || !Array.isArray(marketResponse.data)) return;
+    // Wrapped in its own try block to ensure an API error never kills the loop execution
+    let marketResponse;
+    try {
+      marketResponse = await axios.get('https://api.dexscreener.com/token-profiles/latest/v1', { timeout: 4000 });
+    } catch (apiErr) {
+      console.log(` -> [NETWORK NOTE] Profiles endpoint busy, falling back to trending search...`);
+      marketResponse = await axios.get('https://api.dexscreener.com/latest/dex/search?q=solana', { timeout: 4000 });
+    }
 
-    // Filter down to Solana chain profiles and clean out duplicates
-    const rawMints = marketResponse.data
-      .filter(item => item.chainId === 'solana')
-      .map(item => item.tokenAddress);
+    if (!marketResponse || !marketResponse.data) return;
+
+    let rawMints = [];
+
+    // Parse data structure depending on which endpoint responded
+    if (Array.isArray(marketResponse.data)) {
+      rawMints = marketResponse.data
+        .filter(item => item.chainId === 'solana')
+        .map(item => item.tokenAddress);
+    } else if (marketResponse.data.pairs) {
+      rawMints = marketResponse.data.pairs
+        .filter(p => p.chainId === 'solana' && p.baseToken)
+        .map(p => p.baseToken.address);
+    }
 
     if (rawMints.length === 0) return;
 
-    // Pull detailed multi-pair trading metric profiles for these raw tokens
-    const profilesResponse = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${rawMints.slice(0, 20).join(',')}`);
+    // Remove duplicates
+    const uniqueMints = [...new Set(rawMints)].slice(0, 15);
+
+    let profilesResponse;
+    try {
+      profilesResponse = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${uniqueMints.join(',')}`, { timeout: 4000 });
+    } catch (err) {
+      return; // Skip this tick if the data aggregate endpoint is down
+    }
+
     if (!profilesResponse.data || !profilesResponse.data.pairs) return;
 
-    // Filter by your custom target execution boundaries
+    // Filter by optimized micro-cap setup parameters
     const viablePairs = profilesResponse.data.pairs.filter(p => 
       p.chainId === 'solana' &&
-      p.marketCap && p.marketCap >= 15000 &&           // Accommodate early micro-cap setups
-      p.volume && p.volume.h1 && p.volume.h1 >= 5000    // Dynamic initial breakout volume
+      p.marketCap && p.marketCap >= 15000 && 
+      p.volume && p.volume.h1 && p.volume.h1 >= 4000
     );
 
     for (const pair of viablePairs) {
@@ -67,7 +91,6 @@ async function executeSniperScan() {
         const report = securityCheck.data;
 
         if (report) {
-          // Hard security enforcement: Check if mint authority is active
           if (report.mintAuthority !== null && report.mintAuthority !== undefined) {
             isMintable = true;
           }
@@ -78,14 +101,13 @@ async function executeSniperScan() {
           }
 
           if (isMintable) {
-            console.log(` -> [FILTERED] $${pair.baseToken.symbol} rejected due to open mint authority.`);
-            continue;
+            continue; // Safely skip mintable risk factors
           }
 
           const holders = report.holders || [];
           if (holders.length > 0) {
             top10HoldingPct = holders.slice(0, 10).reduce((acc, current) => acc + (current.pct || 0), 0);
-            if (top10HoldingPct === 0 || top10HoldingPct < 25) { // 25% tolerance for ultra-fresh launches
+            if (top10HoldingPct === 0 || top10HoldingPct < 25) {
               securityPassed = true;
             }
           } else {
@@ -93,7 +115,7 @@ async function executeSniperScan() {
           }
         }
       } catch (apiErr) {
-        // Fallback option for unindexed profiles or API performance ceilings
+        // Safe fallback logic if third-party scanner hits limits
         if ((pair.liquidity?.usd || 0) > 3000 || hasLockedLiquidity) {
           securityPassed = true;
         }
@@ -101,7 +123,6 @@ async function executeSniperScan() {
 
       if (!securityPassed) continue;
 
-      // Lock pair address into memory cache to stop notification duplication loops
       processedPairs.add(pairAddress);
 
       const telegramAlert = `
@@ -133,9 +154,9 @@ async function executeSniperScan() {
       console.log(`🎯 Breakout Signal Sent: $${pair.baseToken.symbol}`);
     }
   } catch (error) {
-    console.error("Scanner Execution Note:", error.message);
+    console.log("Scanner loop caught exception safely:", error.message);
   }
 }
 
-// 5-second interval execution loop
-setInterval(executeSniperScan, 5000);
+// 6-second delay to guarantee smooth API pacing
+setInterval(executeSniperScan, 6000);
