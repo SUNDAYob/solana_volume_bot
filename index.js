@@ -12,21 +12,13 @@ http.createServer((req, res) => {
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 
-// DIAGNOSTIC TEST: Upgraded with strict error tracking logs
+// DIAGNOSTIC STARTUP CHECK
 async function sendSystemTest() {
-  console.log("=== TELEGRAM ENVIRONMENT DIAGNOSTICS ===");
-  console.log("Bot Token Present?:", process.env.TELEGRAM_BOT_TOKEN ? "YES (Starts with: " + process.env.TELEGRAM_BOT_TOKEN.substring(0,6) + ")" : "NO");
-  console.log("Chat ID Present?:", process.env.TELEGRAM_CHAT_ID ? "YES (" + process.env.TELEGRAM_CHAT_ID + ")" : "NO");
-  console.log("========================================");
-
   try {
-    if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) {
-      throw new Error("Missing credentials entirely in process.env");
-    }
-    await bot.telegram.sendMessage(CHAT_ID, "🚀 <b>SOLANA SNIPER ONLINE:</b> Connection verified successfully. Waiting for high-conviction market breakouts...", { parse_mode: 'HTML' });
-    console.log("✅ Diagnostic test alert successfully sent to Telegram!");
+    await bot.telegram.sendMessage(CHAT_ID, "🚀 <b>SOLANA SNIPER STREAM ACTIVE:</b> Switched to high-velocity token tracking pipelines. Scanning for strict parameter matches...", { parse_mode: 'HTML' });
+    console.log("✅ Diagnostic stream update notification pushed to Telegram.");
   } catch (err) {
-    console.log("❌ TELEGRAM FAILURE DIAGNOSIS:", err.message);
+    console.log("❌ Telegram Failure Diagnosis:", err.message);
   }
 }
 sendSystemTest();
@@ -36,17 +28,25 @@ const processedPairs = new Set();
 
 async function executeProScan() {
   try {
-    console.log(`[${new Date().toLocaleTimeString()}] Fetching market pairs...`);
+    console.log(`[${new Date().toLocaleTimeString()}] Accessing high-velocity token streams...`);
     
-    // 1. Fetch active trending tokens via DexScreener
-    const marketResponse = await axios.get('https://api.dexscreener.com/latest/dex/search?q=solana');
-    if (!marketResponse.data || !marketResponse.data.pairs) return;
+    // Switch from text search query to DexScreener Token Boosts endpoint for immediate trending volume data
+    const marketResponse = await axios.get('https://api.dexscreener.com/token-boosts/top/v1');
+    if (!marketResponse.data || !Array.isArray(marketResponse.data)) return;
 
-    // Filter baseline configurations based on your criteria
-    const targetedPairs = marketResponse.data.pairs.filter(p => 
+    // Extract unique token mint profiles from the stream
+    const hotMints = marketResponse.data.slice(0, 30).map(item => item.tokenAddress);
+    if (hotMints.length === 0) return;
+
+    // Pull the complete multi-pair metadata array for these active items
+    const profilesResponse = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${hotMints.join(',')}`);
+    if (!profilesResponse.data || !profilesResponse.data.pairs) return;
+
+    // Filter baseline configurations based on your precise strict metrics
+    const targetedPairs = profilesResponse.data.pairs.filter(p => 
       p.chainId === 'solana' &&
       p.marketCap && p.marketCap >= 25000 &&       // Market cap $25k upward
-      p.volume && p.volume.h1 && p.volume.h1 >= 15000 // Ensure consistent initial trading volume
+      p.volume && p.volume.h1 && p.volume.h1 >= 15000 // High 1-Hour trading volume threshold
     );
 
     for (const pair of targetedPairs) {
@@ -56,18 +56,18 @@ async function executeProScan() {
       if (processedPairs.has(pairAddress)) continue;
 
       try {
-        // 2. Query RugCheck to fetch the explicit security & on-chain distribution data
-        const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`);
+        // Query RugCheck API engine for granular security properties
+        const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 3000 });
         const report = securityCheck.data;
 
         if (!report) continue;
 
-        // Metric A: Calculate Top 10 Holder Distribution (Strictly below 22%)
+        // Metric A: Validate Top 10 Holder Distribution (Strictly below 22%)
         const holders = report.holders || [];
         const top10HoldingPct = holders.slice(0, 10).reduce((acc, current) => acc + (current.pct || 0), 0);
 
-        if (top10HoldingPct > 22) {
-          console.log(`[SKIPPED] $${pair.baseToken.symbol} - Top 10 holds ${top10HoldingPct.toFixed(1)}% (Limit: 22%)`);
+        if (top10HoldingPct > 22 || top10HoldingPct === 0) {
+          console.log(` -> [SKIPPED] $${pair.baseToken.symbol} - Concentrated Distribution: ${top10HoldingPct.toFixed(1)}%`);
           continue;
         }
 
@@ -77,15 +77,15 @@ async function executeProScan() {
         const lpLocked = markets.some(m => m.lp && m.lp.lpLocked === true);
 
         if (!lpBurned && !lpLocked) {
-          console.log(`[SKIPPED] $${pair.baseToken.symbol} - Liquidity vulnerable (Not locked/burned)`);
+          console.log(` -> [SKIPPED] $${pair.baseToken.symbol} - Vulnerable Liquidity (Unlocked/Unburned)`);
           continue;
         }
 
-        // 3. Validation passed! Lock token in cache & dispatch professional alert layout
+        // Cache registration to guarantee no duplicate signal alerts populate your chat
         processedPairs.add(pairAddress);
 
         const telegramAlert = `
-⚡ <b>SOLANA BREAKOUT SIGNAL</b> ⚡
+⚡ <b>SOLANA PRO BREAKOUT</b> ⚡
 ────────────────────────
 ▶ <b>ASSET INFORMATION</b>
 • <b>Token:</b> $${pair.baseToken.symbol}
@@ -97,7 +97,7 @@ async function executeProScan() {
 • <b>1H Trading Vol:</b> $${pair.volume.h1.toLocaleString()}
 • <b>Liquidity Pool:</b> $${(pair.liquidity?.usd || 0).toLocaleString()}
 
-▶ <b>ON-CHAIN SECURITY RISK AUDIT</b>
+▶ <b>ON-CHAIN SECURITY AUDIT</b>
 • <b>Top 10 Allocation:</b> ${top10HoldingPct.toFixed(1)}% ✅ (Below 22%)
 • <b>Liquidity Structure:</b> ${lpBurned ? 'Burned 🔥' : 'Locked 🔒'} ✅
 
@@ -112,17 +112,17 @@ async function executeProScan() {
           disable_web_page_preview: true 
         });
         
-        console.log(`🎯 Pro Alert Dispatched for $${pair.baseToken.symbol}!`);
+        console.log(`🎯 Breakout Alert Dispatched to Telegram for $${pair.baseToken.symbol}!`);
 
       } catch (innerError) {
-        // Suppress individual API errors to avoid breaking loop execution
+        // Fail-safe pass-through for network rate limits on external data reports
         continue;
       }
     }
   } catch (error) {
-    console.error("Scanner Pipeline Warning:", error.message);
+    console.error("Scanner Pipeline Stream Warning:", error.message);
   }
 }
 
-// Optimized Pro Cycle Execution Rate: 5000ms (5 seconds)
+// 5-Second Pro Cycle Execution Rate
 setInterval(executeProScan, 5000);
