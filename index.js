@@ -9,8 +9,27 @@ http.createServer((req, res) => {
   res.end('Solana Pro Scanner Running\n');
 }).listen(process.env.PORT || 3000);
 
-const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
-const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
+const CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
+
+// DIAGNOSTIC TEST: Upgraded with strict error tracking logs
+async function sendSystemTest() {
+  console.log("=== TELEGRAM ENVIRONMENT DIAGNOSTICS ===");
+  console.log("Bot Token Present?:", process.env.TELEGRAM_BOT_TOKEN ? "YES (Starts with: " + process.env.TELEGRAM_BOT_TOKEN.substring(0,6) + ")" : "NO");
+  console.log("Chat ID Present?:", process.env.TELEGRAM_CHAT_ID ? "YES (" + process.env.TELEGRAM_CHAT_ID + ")" : "NO");
+  console.log("========================================");
+
+  try {
+    if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) {
+      throw new Error("Missing credentials entirely in process.env");
+    }
+    await bot.telegram.sendMessage(CHAT_ID, "🚀 <b>SOLANA SNIPER ONLINE:</b> Connection verified successfully. Waiting for high-conviction market breakouts...", { parse_mode: 'HTML' });
+    console.log("✅ Diagnostic test alert successfully sent to Telegram!");
+  } catch (err) {
+    console.log("❌ TELEGRAM FAILURE DIAGNOSIS:", err.message);
+  }
+}
+sendSystemTest();
 
 // Cache to handle tracking and avoid duplicate alerts
 const processedPairs = new Set();
@@ -58,7 +77,7 @@ async function executeProScan() {
         const lpLocked = markets.some(m => m.lp && m.lp.lpLocked === true);
 
         if (!lpBurned && !lpLocked) {
-          console.log(`[SKIPPED] $${pair.baseToken.symbol} - Liquidity is vulnerable (Not locked/burned)`);
+          console.log(`[SKIPPED] $${pair.baseToken.symbol} - Liquidity vulnerable (Not locked/burned)`);
           continue;
         }
 
@@ -66,37 +85,37 @@ async function executeProScan() {
         processedPairs.add(pairAddress);
 
         const telegramAlert = `
-⚡ *SOLANA BREAKOUT SIGNAL* ⚡
+⚡ <b>SOLANA BREAKOUT SIGNAL</b> ⚡
 ────────────────────────
-▶ *ASSET INFORMATION*
-• *Token:* $${pair.baseToken.symbol}
-• *Name:* ${pair.baseToken.name}
-• *Mint:* \`${tokenMint}\`
+▶ <b>ASSET INFORMATION</b>
+• <b>Token:</b> $${pair.baseToken.symbol}
+• <b>Name:</b> ${pair.baseToken.name}
+• <b>Mint:</b> <code>${tokenMint}</code>
 
-▶ *FINANCIAL METRICS*
-• *Market Cap:* $${pair.marketCap.toLocaleString()}
-• *1H Trading Vol:* $${pair.volume.h1.toLocaleString()}
-• *Liquidity Pool:* $${(pair.liquidity?.usd || 0).toLocaleString()}
+▶ <b>FINANCIAL METRICS</b>
+• <b>Market Cap:</b> $${pair.marketCap.toLocaleString()}
+• <b>1H Trading Vol:</b> $${pair.volume.h1.toLocaleString()}
+• <b>Liquidity Pool:</b> $${(pair.liquidity?.usd || 0).toLocaleString()}
 
-▶ *ON-CHAIN SECURITY RISK AUDIT*
-• *Top 10 Allocation:* ${top10HoldingPct.toFixed(1)}% ✅ (Below 22%)
-• *Liquidity Structure:* ${lpBurned ? 'Burned 🔥' : 'Locked 🔒'} ✅
+▶ <b>ON-CHAIN SECURITY RISK AUDIT</b>
+• <b>Top 10 Allocation:</b> ${top10HoldingPct.toFixed(1)}% ✅ (Below 22%)
+• <b>Liquidity Structure:</b> ${lpBurned ? 'Burned 🔥' : 'Locked 🔒'} ✅
 
-▶ *EXECUTION TERMINALS*
-• [View DexScreener](${pair.url})
-• [Trade on Photon](https://photon-sol.tinyastro.io/en/lp/${pairAddress})
+▶ <b>EXECUTION TERMINALS</b>
+• <a href="${pair.url}">View DexScreener</a>
+• <a href="https://photon-sol.tinyastro.io/en/lp/${pairAddress}">Trade on Photon</a>
 ────────────────────────
 `;
 
         await bot.telegram.sendMessage(CHAT_ID, telegramAlert, { 
-          parse_mode: 'Markdown',
+          parse_mode: 'HTML',
           disable_web_page_preview: true 
         });
         
         console.log(`🎯 Pro Alert Dispatched for $${pair.baseToken.symbol}!`);
 
       } catch (innerError) {
-        // Suppress individual sub-query failures to keep scanner loops moving fast
+        // Suppress individual API errors to avoid breaking loop execution
         continue;
       }
     }
