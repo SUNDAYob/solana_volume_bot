@@ -3,7 +3,7 @@ const axios = require('axios');
 require('dotenv').config();
 const { Telegraf } = require('telegraf');
 
-// Render cloud keep-alive port binding
+// Keep-alive server binding for Render cloud containers
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('Solana Whale Sniper Engine Active\n');
@@ -14,7 +14,7 @@ const CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 
 async function sendSystemTest() {
   try {
-    await bot.telegram.sendMessage(CHAT_ID, "🐋 <b>WHALE & MOMENTUM ENGINE ONLINE:</b> Scan stream configured for strict 65%+ Buys and heavy institutional buy orders.", { parse_mode: 'HTML' });
+    await bot.telegram.sendMessage(CHAT_ID, "🐋 <b>WHALE & MOMENTUM ENGINE ONLINE:</b> Scan stream configured for strict 65%+ Buys and institutional buy order tracking.", { parse_mode: 'HTML' });
     console.log("✅ Whale tracking system initialized.");
   } catch (err) {
     console.log("Startup alert deferred:", err.message);
@@ -28,7 +28,6 @@ async function executeSniperScan() {
   try {
     console.log(`[${new Date().toLocaleTimeString()}] Querying raw listing streams for whale momentum...`);
     
-    // Core listing stream
     let marketResponse;
     try {
       marketResponse = await axios.get('https://api.dexscreener.com/token-profiles/latest/v1', { timeout: 4000 });
@@ -57,7 +56,7 @@ async function executeSniperScan() {
 
     if (!profilesResponse.data || !profilesResponse.data.pairs) return;
 
-    // Financial boundaries
+    // Filter baseline financial boundaries
     const viablePairs = profilesResponse.data.pairs.filter(p => 
       p.chainId === 'solana' &&
       p.marketCap && p.marketCap >= 15000 && 
@@ -70,27 +69,25 @@ async function executeSniperScan() {
 
       if (processedPairs.has(pairAddress)) continue;
 
-      // 1. BUYER vs SELLER RATE MATH (1-Hour Window)
+      // 1. BUYER vs SELLER RATE FILTERS (1-Hour Window)
       const hourlyTxns = pair.txns?.h1;
       if (!hourlyTxns || !hourlyTxns.buys || !hourlyTxns.sells) continue;
 
       const totalTrades = hourlyTxns.buys + hourlyTxns.sells;
-      if (totalTrades < 10) continue; // Ensure statistical significance
+      if (totalTrades < 10) continue; // Guarantee statistical relevance
 
       const buyRatioPct = (hourlyTxns.buys / totalTrades) * 100;
       const sellRatioPct = (hourlyTxns.sells / totalTrades) * 100;
 
-      // CRITICAL CRITERIA FILTER: 65% Buy pressure minimum / 35% Sell pressure maximum
+      // CRITICAL MOMENTUM GATE: Must hit minimum 65% buys (Max 35% sells)
       if (buyRatioPct < 65.0) {
-        console.log(` -> [SKIPPED] $${pair.baseToken.symbol} failed momentum test (${buyRatioPct.toFixed(1)}% Buys)`);
+        console.log(` -> [SKIPPED] $${pair.baseToken.symbol} failed ratio checkpoint (${buyRatioPct.toFixed(1)}% Buys)`);
         continue;
       }
 
-      // 2. WHALE PROFILE SCORING (Average buy size tracking)
-      // If a pool has heavy volume matching low relative tx counts, deep wallets are piling in.
+      // 2. WHALE PROFILE DETECTION SCORING
       const hourlyVolume = pair.volume?.h1 || 0;
       const averageOrderSize = hourlyVolume / totalTrades;
-      
       const priceChangeH1 = pair.priceChange?.h1 || 0;
 
       let top10HoldingPct = 0;
@@ -124,18 +121,18 @@ async function executeSniperScan() {
 
       processedPairs.add(pairAddress);
 
-      // Format custom visual alert with whale alerts and ratio mapping
+      // Advanced data display layout
       const telegramAlert = `
-🐋 <b>WHALE MOMENTUM SPOTLIGHT</b> 🐋
+🐋 <b>MOMENTUM & WHALE SPOTLIGHT</b> 🐋
 ────────────────────────
 ▶ <b>TOKEN METADATA</b>
 • <b>Symbol:</b> $${pair.baseToken.symbol}
 • <b>Contract:</b> <code>${tokenMint}</code>
 
-▶ <b>MARKET MOMENTUM CORRELATION</b>
-• <b>1H Tx Ratio:</b> 🟢 ${buyRatioPct.toFixed(1)}% Buy / 🔴 ${sellRatioPct.toFixed(1)}% Sell
+▶ <b>VOLUME & RATIO RADAR</b>
+• <b>1H Tx Split:</b> 🟢 ${buyRatioPct.toFixed(1)}% Buy / 🔴 ${sellRatioPct.toFixed(1)}% Sell
 • <b>1H Price Velocity:</b> ${priceChangeH1 >= 0 ? '📈 +' : '📉 '}${priceChangeH1}%
-• <b>Whale Order Profile:</b> ${averageOrderSize > 150 ? '👑 HIGH CONFIDENCE SWEEP' : '👥 Retail Volume'}
+• <b>Whale Footprint:</b> ${averageOrderSize > 120 ? '👑 WHALE ACCUMULATION DETECTED' : '👥 Distributed Retail Flow'}
 
 ▶ <b>FINANCIAL METRICS</b>
 • <b>Market Cap:</b> $${pair.marketCap.toLocaleString()}
@@ -158,7 +155,7 @@ async function executeSniperScan() {
       console.log(`🎯 Whale Breakout Signal Sent: $${pair.baseToken.symbol}`);
     }
   } catch (error) {
-    console.log("Scanner loop anomaly suppressed safely:", error.message);
+    console.log("Scanner loop variance skipped safely:", error.message);
   }
 }
 
