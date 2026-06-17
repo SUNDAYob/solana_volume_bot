@@ -5,11 +5,12 @@ const { Telegraf } = require('telegraf');
 
 const PORT = process.env.PORT || 10000;
 
+// Keep-alive server interface
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Solana Volume Engine: Active Trade Flow\n');
+  res.end('Solana Resilient Trade Engine: 24/7 Active\n');
 }).listen(PORT, '0.0.0.0', () => {
-  console.log(`📡 Alpha engine interface securely bound to port ${PORT}`);
+  console.log(`📡 Resilient Alpha Engine active on port ${PORT}`);
 });
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
@@ -17,8 +18,8 @@ const CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 
 async function sendSystemTest() {
   try {
-    await bot.telegram.sendMessage(CHAT_ID, "🦅 <b>TRADE FLOW ACTIVE:</b>\n────────────────────────\n• 🛡️ <b>Liquidity Floor:</b> Calibrated to $6,000\n• 📊 <b>1H Volume Floor:</b> Min $5,000 Stream\n• 📈 <b>Momentum Gate:</b> Balanced at 58%+\n• 🔄 Scanning active network transactions...", { parse_mode: 'HTML' });
-    console.log("✅ Balanced Engine configuration live notification sent.");
+    await bot.telegram.sendMessage(CHAT_ID, "🦅 <b>RESILIENT ENGINE ONLINE:</b>\n────────────────────────\n• 🛡️ <b>Anti-Throttle:</b> Auto-backoff activated\n• 📊 <b>Liquidity Floor:</b> Secure at $6,000\n• 📈 <b>1H Volume Floor:</b> Stable at $5,000\n• 🔄 Continuous multi-stream scanning live...", { parse_mode: 'HTML' });
+    console.log("✅ Resilient initialization alert fired.");
   } catch (err) {
     console.log("Startup alert deferred:", err.message);
   }
@@ -26,43 +27,62 @@ async function sendSystemTest() {
 sendSystemTest();
 
 const processedPairs = new Set();
+let errorDelay = 6000; // Dynamic loop speed to prevent API bans
 
 async function executeSniperScan() {
   try {
     let mintsList = [];
     
-    // Aggressive dual-stream sourcing to pull everything moving on Solana
+    // SOURCING PIPELINE 1: Token Profiles
     try {
-      const profilesRoute = await axios.get('https://api.dexscreener.com/token-profiles/latest/v1', { timeout: 4000 });
+      const profilesRoute = await axios.get('https://api.dexscreener.com/token-profiles/latest/v1', { timeout: 5000 });
       if (profilesRoute.data && Array.isArray(profilesRoute.data)) {
         profilesRoute.data.filter(p => p.chainId === 'solana').forEach(p => mintsList.push(p.tokenAddress));
       }
-    } catch (e) {}
+    } catch (e) {
+      // Handle rate limits silently
+    }
 
+    // SOURCING PIPELINE 2: High Activity Search Fallback
     try {
-      const trendingRoute = await axios.get('https://api.dexscreener.com/latest/dex/search?q=solana', { timeout: 4000 });
+      const trendingRoute = await axios.get('https://api.dexscreener.com/latest/dex/search?q=solana', { timeout: 5000 });
       if (trendingRoute.data && trendingRoute.data.pairs) {
         trendingRoute.data.pairs.filter(p => p.chainId === 'solana' && p.baseToken).forEach(p => mintsList.push(p.baseToken.address));
       }
-    } catch (e) {}
+    } catch (e) {
+      // Handle rate limits silently
+    }
 
-    if (mintsList.length === 0) return;
-    const uniqueMints = [...new Set(mintsList)].slice(0, 25);
+    if (mintsList.length === 0) {
+      setTimeout(executeSniperScan, errorDelay);
+      return;
+    }
+
+    const uniqueMints = [...new Set(mintsList)].slice(0, 30);
 
     let profilesResponse;
     try {
-      profilesResponse = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${uniqueMints.join(',')}`, { timeout: 5000 });
+      profilesResponse = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${uniqueMints.join(',')}`, { timeout: 6000 });
+      errorDelay = 6000; // Reset back to high performance on successful request
     } catch (err) {
+      if (err.response && err.response.status === 429) {
+        console.log("⚠️ Throttled by DexScreener. Backing off for 30 seconds to protect IP...");
+        errorDelay = 30000; // Back off loop speed dynamically to clear rate limits safely
+      }
+      setTimeout(executeSniperScan, errorDelay);
       return; 
     }
 
-    if (!profilesResponse.data || !profilesResponse.data.pairs) return;
+    if (!profilesResponse.data || !profilesResponse.data.pairs) {
+      setTimeout(executeSniperScan, errorDelay);
+      return;
+    }
 
-    // BALANCED SCANNER METRICS: Designed to let real volume through while shielding from total collapses
+    // BALANCED ENGINE METRICS
     const viablePairs = profilesResponse.data.pairs.filter(p => 
       p.chainId === 'solana' &&
       p.marketCap && p.marketCap >= 15000 && 
-      p.liquidity && p.liquidity.usd && p.liquidity.usd >= 6000 && // $6k floor lets viable projects trigger alerts
+      p.liquidity && p.liquidity.usd && p.liquidity.usd >= 6000 && 
       p.volume && p.volume.h1 && p.volume.h1 >= 5000
     );
 
@@ -81,10 +101,7 @@ async function executeSniperScan() {
       const buyRatioPct = (hourlyTxns.buys / totalTrades) * 100;
       const sellRatioPct = (hourlyTxns.sells / totalTrades) * 100;
 
-      // MOMENTUM GATEWAY
-      if (buyRatioPct < 58.0) {
-        continue;
-      }
+      if (buyRatioPct < 58.0) continue;
 
       const hourlyVolume = pair.volume?.h1 || 0;
       const averageOrderSize = hourlyVolume / totalTrades;
@@ -94,9 +111,8 @@ async function executeSniperScan() {
       let top10HoldingPct = 0;
       let securityPassed = false;
 
-      // INSTANT SECURITY AUDIT
       try {
-        const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 2000 });
+        const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 2500 });
         const report = securityCheck.data;
 
         if (report) {
@@ -107,7 +123,7 @@ async function executeSniperScan() {
             const holders = report.holders || [];
             if (holders.length > 0) {
               top10HoldingPct = holders.slice(0, 10).reduce((acc, current) => acc + (current.pct || 0), 0);
-              if (top10HoldingPct <= 40.0) securityPassed = true; // Safe cap protection
+              if (top10HoldingPct <= 45.0) securityPassed = true; 
             } else {
               securityPassed = true;
             }
@@ -153,8 +169,12 @@ async function executeSniperScan() {
       console.log(`🎯 Active Signal Pushed: $${pair.baseToken.symbol}`);
     }
   } catch (error) {
-    // Fail silently to maintain smooth uptime loops
+    // Keep loops running seamlessly
   }
+
+  // Self-scheduling loop with dynamic speed control
+  setTimeout(executeSniperScan, errorDelay);
 }
 
-setInterval(executeSniperScan, 6000);
+// Kick off the initial loop execution safely
+setTimeout(executeSniperScan, 4000);
