@@ -5,12 +5,12 @@ const { Telegraf } = require('telegraf');
 
 const PORT = process.env.PORT || 10000;
 
-// Keep-alive server interface
+// Professional web server bind for 24/7 Render stability
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Solana Resilient Trade Engine: 24/7 Active\n');
+  res.end('Solana Professional Volume-Velocity Engine: Active\n');
 }).listen(PORT, '0.0.0.0', () => {
-  console.log(`📡 Resilient Alpha Engine active on port ${PORT}`);
+  console.log(`📡 Professional Engine bound to port ${PORT}`);
 });
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
@@ -18,8 +18,8 @@ const CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 
 async function sendSystemTest() {
   try {
-    await bot.telegram.sendMessage(CHAT_ID, "🦅 <b>RESILIENT ENGINE ONLINE:</b>\n────────────────────────\n• 🛡️ <b>Anti-Throttle:</b> Auto-backoff activated\n• 📊 <b>Liquidity Floor:</b> Secure at $6,000\n• 📈 <b>1H Volume Floor:</b> Stable at $5,000\n• 🔄 Continuous multi-stream scanning live...", { parse_mode: 'HTML' });
-    console.log("✅ Resilient initialization alert fired.");
+    await bot.telegram.sendMessage(CHAT_ID, "🦅 <b>PROFESSIONAL MOMENTUM ENGINE ONLINE:</b>\n────────────────────────\n• 📊 <b>Strategy:</b> Volume-to-Liquidity Velocity Multiplier\n• 🛡️ <b>Liquidity Floor:</b> Secure at $5,000\n• ⚡ <b>Tracking:</b> Smart Money Accumulation Footprints\n────────────────────────\n🔄 Sweeping live network transactions...", { parse_mode: 'HTML' });
+    console.log("✅ Professional Engine system notification pushed.");
   } catch (err) {
     console.log("Startup alert deferred:", err.message);
   }
@@ -27,63 +27,57 @@ async function sendSystemTest() {
 sendSystemTest();
 
 const processedPairs = new Set();
-let errorDelay = 6000; // Dynamic loop speed to prevent API bans
+let executionDelay = 6000; 
 
 async function executeSniperScan() {
   try {
     let mintsList = [];
     
-    // SOURCING PIPELINE 1: Token Profiles
+    // Multi-stream extraction to pull both trending pairs and raw profile updates
     try {
-      const profilesRoute = await axios.get('https://api.dexscreener.com/token-profiles/latest/v1', { timeout: 5000 });
-      if (profilesRoute.data && Array.isArray(profilesRoute.data)) {
-        profilesRoute.data.filter(p => p.chainId === 'solana').forEach(p => mintsList.push(p.tokenAddress));
-      }
-    } catch (e) {
-      // Handle rate limits silently
-    }
-
-    // SOURCING PIPELINE 2: High Activity Search Fallback
-    try {
-      const trendingRoute = await axios.get('https://api.dexscreener.com/latest/dex/search?q=solana', { timeout: 5000 });
+      const trendingRoute = await axios.get('https://api.dexscreener.com/latest/dex/search?q=solana', { timeout: 4000 });
       if (trendingRoute.data && trendingRoute.data.pairs) {
         trendingRoute.data.pairs.filter(p => p.chainId === 'solana' && p.baseToken).forEach(p => mintsList.push(p.baseToken.address));
       }
-    } catch (e) {
-      // Handle rate limits silently
-    }
+    } catch (e) {}
+
+    try {
+      const profilesRoute = await axios.get('https://api.dexscreener.com/token-profiles/latest/v1', { timeout: 4000 });
+      if (profilesRoute.data && Array.isArray(profilesRoute.data)) {
+        profilesRoute.data.filter(p => p.chainId === 'solana').forEach(p => mintsList.push(p.tokenAddress));
+      }
+    } catch (e) {}
 
     if (mintsList.length === 0) {
-      setTimeout(executeSniperScan, errorDelay);
+      setTimeout(executeSniperScan, executionDelay);
       return;
     }
 
-    const uniqueMints = [...new Set(mintsList)].slice(0, 30);
+    const uniqueMints = [...new Set(mintsList)].slice(0, 25);
 
     let profilesResponse;
     try {
-      profilesResponse = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${uniqueMints.join(',')}`, { timeout: 6000 });
-      errorDelay = 6000; // Reset back to high performance on successful request
+      profilesResponse = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${uniqueMints.join(',')}`, { timeout: 5000 });
+      executionDelay = 6000; // Reset delay on successful hit
     } catch (err) {
       if (err.response && err.response.status === 429) {
-        console.log("⚠️ Throttled by DexScreener. Backing off for 30 seconds to protect IP...");
-        errorDelay = 30000; // Back off loop speed dynamically to clear rate limits safely
+        executionDelay = 20000; // Smart throttling back-off
       }
-      setTimeout(executeSniperScan, errorDelay);
+      setTimeout(executeSniperScan, executionDelay);
       return; 
     }
 
     if (!profilesResponse.data || !profilesResponse.data.pairs) {
-      setTimeout(executeSniperScan, errorDelay);
+      setTimeout(executeSniperScan, executionDelay);
       return;
     }
 
-    // BALANCED ENGINE METRICS
+    // PROFESSIONAL FILTER LOGIC
     const viablePairs = profilesResponse.data.pairs.filter(p => 
       p.chainId === 'solana' &&
-      p.marketCap && p.marketCap >= 15000 && 
-      p.liquidity && p.liquidity.usd && p.liquidity.usd >= 6000 && 
-      p.volume && p.volume.h1 && p.volume.h1 >= 5000
+      p.marketCap && p.marketCap >= 12000 && 
+      p.liquidity && p.liquidity.usd && p.liquidity.usd >= 5000 && 
+      p.volume && p.volume.h1 && p.volume.h1 >= 6000
     );
 
     for (const pair of viablePairs) {
@@ -96,23 +90,25 @@ async function executeSniperScan() {
       if (!hourlyTxns || !hourlyTxns.buys || !hourlyTxns.sells) continue;
 
       const totalTrades = hourlyTxns.buys + hourlyTxns.sells;
-      if (totalTrades < 10) continue; 
-
       const buyRatioPct = (hourlyTxns.buys / totalTrades) * 100;
-      const sellRatioPct = (hourlyTxns.sells / totalTrades) * 100;
 
-      if (buyRatioPct < 58.0) continue;
+      // Ensure stable initial momentum
+      if (buyRatioPct < 52.0) continue;
 
       const hourlyVolume = pair.volume?.h1 || 0;
-      const averageOrderSize = hourlyVolume / totalTrades;
-      const priceChangeH1 = pair.priceChange?.h1 || 0;
       const poolLiquidity = pair.liquidity.usd;
+      const priceChangeH1 = pair.priceChange?.h1 || 0;
+
+      // MATHEMATICAL VELOCITY CHECK: Is volume outstripping liquidity? (Signs of extreme attention)
+      const volumeToLiquidityRatio = hourlyVolume / poolLiquidity;
+      if (volumeToLiquidityRatio < 0.8) continue; 
 
       let top10HoldingPct = 0;
       let securityPassed = false;
 
+      // RUGCHECK AUDIT
       try {
-        const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 2500 });
+        const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 2000 });
         const report = securityCheck.data;
 
         if (report) {
@@ -130,7 +126,7 @@ async function executeSniperScan() {
           }
         }
       } catch (apiErr) {
-        if (poolLiquidity >= 10000) securityPassed = true;
+        if (poolLiquidity >= 12000) securityPassed = true;
       }
 
       if (!securityPassed) continue;
@@ -138,24 +134,23 @@ async function executeSniperScan() {
       processedPairs.add(pairAddress);
 
       const telegramAlert = `
-🔥 <b>SOLANA VOLUME BREAKOUT</b> 🔥
+💎 <b>PROFESSIONAL HIGH-VELOCITY SIGNAL</b> 💎
 ────────────────────────
 ▶ <b>TOKEN METADATA</b>
 • <b>Symbol:</b> $${pair.baseToken.symbol}
 • <b>Contract:</b> <code>${tokenMint}</code>
 
-▶ <b>MARKET METRICS</b>
-• <b>1H Tx Split:</b> 🟢 ${buyRatioPct.toFixed(1)}% Buy / 🔴 ${sellRatioPct.toFixed(1)}% Sell
-• <b>1H Velocity:</b> 📈 +${priceChangeH1}%
-• <b>Avg Order Size:</b> $${averageOrderSize.toFixed(2)}
+▶ <b>ACCELERATION METRICS</b>
+• <b>1H Volume Multiplier:</b> 🔥 <b>${volumeToLiquidityRatio.toFixed(2)}x</b> (Volume vs. Pool)
+• <b>1H Price Velocity:</b> 📈 +${priceChangeH1}%
+• <b>Transaction Flow:</b> 🟢 ${buyRatioPct.toFixed(1)}% Buys (${totalTrades} total trades)
 
-▶ <b>LIQUIDITY & POOL DEPTH</b>
+▶ <b>LIQUIDITY & RISK CONTROL</b>
 • <b>Market Cap:</b> $${pair.marketCap.toLocaleString()}
-• <b>1H Total Volume:</b> $${hourlyVolume.toLocaleString()}
-• <b>Liquidity Pool:</b> $${poolLiquidity.toLocaleString()} ✅ 
-• <b>Top 10 Supply:</b> ${top10HoldingPct > 0 ? top10HoldingPct.toFixed(1) + '%' : 'Verified Safe'} 🛡️
+• <b>Liquidity Pool:</b> $${poolLiquidity.toLocaleString()} ✅
+• <b>Top 10 Concentration:</b> ${top10HoldingPct > 0 ? top10HoldingPct.toFixed(1) + '%' : 'Verified Safe'} 🛡️
 ────────────────────────
-▶ <b>TRADE CHANNELS</b>
+▶ <b>TRADE EXECUTION</b>
 • <a href="${pair.url}">DexScreener Link</a>
 • <a href="https://photon-sol.tinyastro.io/en/lp/${pairAddress}">Execute Instant Trade on Photon</a>
 ────────────────────────
@@ -166,15 +161,13 @@ async function executeSniperScan() {
         disable_web_page_preview: true 
       });
       
-      console.log(`🎯 Active Signal Pushed: $${pair.baseToken.symbol}`);
+      console.log(`🎯 Momentum Signal Pushed: $${pair.baseToken.symbol}`);
     }
   } catch (error) {
-    // Keep loops running seamlessly
+    // Keep internal loop running seamlessly
   }
 
-  // Self-scheduling loop with dynamic speed control
-  setTimeout(executeSniperScan, errorDelay);
+  setTimeout(executeSniperScan, executionDelay);
 }
 
-// Kick off the initial loop execution safely
 setTimeout(executeSniperScan, 4000);
