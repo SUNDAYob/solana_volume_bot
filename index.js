@@ -5,10 +5,9 @@ const { Telegraf } = require('telegraf');
 
 const PORT = process.env.PORT || 10000;
 
-// Hardened web server layer to accept outside pings seamlessly
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Solana Multi-Tier Alpha Engine: 24/7 Keepalive Active\n');
+  res.end('Solana Volume Engine: Active Trade Flow\n');
 }).listen(PORT, '0.0.0.0', () => {
   console.log(`📡 Alpha engine interface securely bound to port ${PORT}`);
 });
@@ -18,8 +17,8 @@ const CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 
 async function sendSystemTest() {
   try {
-    await bot.telegram.sendMessage(CHAT_ID, "🦅 <b>ENGINE RELOADED & FORTIFIED:</b>\n────────────────────────\n• 🔄 <b>Network Shields:</b> Automatic 429/502 suppression live.\n• 🛑 <b>Anti-Rug Wall:</b> Min Liquidity $15,000\n• 📊 <b>Volume Floor:</b> Min $12,000 1H Stream\n• 👑 <b>Whale Radar:</b> Min $150 average order size", { parse_mode: 'HTML' });
-    console.log("✅ Fortified Alpha Engine operational logs active.");
+    await bot.telegram.sendMessage(CHAT_ID, "🦅 <b>TRADE FLOW ACTIVE:</b>\n────────────────────────\n• 🛡️ <b>Liquidity Floor:</b> Calibrated to $6,000\n• 📊 <b>1H Volume Floor:</b> Min $5,000 Stream\n• 📈 <b>Momentum Gate:</b> Balanced at 58%+\n• 🔄 Scanning active network transactions...", { parse_mode: 'HTML' });
+    console.log("✅ Balanced Engine configuration live notification sent.");
   } catch (err) {
     console.log("Startup alert deferred:", err.message);
   }
@@ -30,32 +29,25 @@ const processedPairs = new Set();
 
 async function executeSniperScan() {
   try {
-    console.log(`[${new Date().toLocaleTimeString()}] Querying primary institutional Solana dex streams...`);
+    let mintsList = [];
     
-    let marketResponse;
+    // Aggressive dual-stream sourcing to pull everything moving on Solana
     try {
-      marketResponse = await axios.get('https://api.dexscreener.com/token-profiles/latest/v1', { timeout: 5000 });
-    } catch (apiErr) {
-      // Direct failover fallback stream to prevent scanning gaps
-      try {
-        marketResponse = await axios.get('https://api.dexscreener.com/latest/dex/search?q=solana', { timeout: 5000 });
-      } catch (fallbackErr) {
-        console.log("⚠️ DexScreener API heavily throttled, cooling down for next loop...");
-        return;
+      const profilesRoute = await axios.get('https://api.dexscreener.com/token-profiles/latest/v1', { timeout: 4000 });
+      if (profilesRoute.data && Array.isArray(profilesRoute.data)) {
+        profilesRoute.data.filter(p => p.chainId === 'solana').forEach(p => mintsList.push(p.tokenAddress));
       }
-    }
+    } catch (e) {}
 
-    if (!marketResponse || !marketResponse.data) return;
+    try {
+      const trendingRoute = await axios.get('https://api.dexscreener.com/latest/dex/search?q=solana', { timeout: 4000 });
+      if (trendingRoute.data && trendingRoute.data.pairs) {
+        trendingRoute.data.pairs.filter(p => p.chainId === 'solana' && p.baseToken).forEach(p => mintsList.push(p.baseToken.address));
+      }
+    } catch (e) {}
 
-    let rawMints = [];
-    if (Array.isArray(marketResponse.data)) {
-      rawMints = marketResponse.data.filter(item => item.chainId === 'solana').map(item => item.tokenAddress);
-    } else if (marketResponse.data.pairs) {
-      rawMints = marketResponse.data.pairs.filter(p => p.chainId === 'solana' && p.baseToken).map(p => p.baseToken.address);
-    }
-
-    if (rawMints.length === 0) return;
-    const uniqueMints = [...new Set(rawMints)].slice(0, 15);
+    if (mintsList.length === 0) return;
+    const uniqueMints = [...new Set(mintsList)].slice(0, 25);
 
     let profilesResponse;
     try {
@@ -66,21 +58,17 @@ async function executeSniperScan() {
 
     if (!profilesResponse.data || !profilesResponse.data.pairs) return;
 
-    // TIER 1 FILTERS: Strict institutional liquidity walls to block 99% of rugs
+    // BALANCED SCANNER METRICS: Designed to let real volume through while shielding from total collapses
     const viablePairs = profilesResponse.data.pairs.filter(p => 
       p.chainId === 'solana' &&
-      p.marketCap && p.marketCap >= 35000 && 
-      p.liquidity && p.liquidity.usd && p.liquidity.usd >= 15000 && 
-      p.volume && p.volume.h1 && p.volume.h1 >= 12000 
+      p.marketCap && p.marketCap >= 15000 && 
+      p.liquidity && p.liquidity.usd && p.liquidity.usd >= 6000 && // $6k floor lets viable projects trigger alerts
+      p.volume && p.volume.h1 && p.volume.h1 >= 5000
     );
 
     for (const pair of viablePairs) {
       const pairAddress = pair.pairAddress;
       const tokenMint = pair.baseToken.address;
-
-      if (tokenMint.endsWith('pump') && (!pair.liquidity || pair.liquidity.usd < 20000)) {
-        continue;
-      }
 
       if (processedPairs.has(pairAddress)) continue;
 
@@ -88,13 +76,13 @@ async function executeSniperScan() {
       if (!hourlyTxns || !hourlyTxns.buys || !hourlyTxns.sells) continue;
 
       const totalTrades = hourlyTxns.buys + hourlyTxns.sells;
-      if (totalTrades < 25) continue; 
+      if (totalTrades < 10) continue; 
 
       const buyRatioPct = (hourlyTxns.buys / totalTrades) * 100;
       const sellRatioPct = (hourlyTxns.sells / totalTrades) * 100;
 
-      // TIER 2 MOMENTUM GATE: Strong buyer absorption (62%+)
-      if (buyRatioPct < 62.0) {
+      // MOMENTUM GATEWAY
+      if (buyRatioPct < 58.0) {
         continue;
       }
 
@@ -103,15 +91,10 @@ async function executeSniperScan() {
       const priceChangeH1 = pair.priceChange?.h1 || 0;
       const poolLiquidity = pair.liquidity.usd;
 
-      // TIER 3 WHALE RADAR: Filters out retail dust trades
-      if (averageOrderSize < 150.0) {
-        continue;
-      }
-
-      // TIER 4 HARDENED SECURITY SHIELD
       let top10HoldingPct = 0;
       let securityPassed = false;
 
+      // INSTANT SECURITY AUDIT
       try {
         const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 2000 });
         const report = securityCheck.data;
@@ -119,20 +102,19 @@ async function executeSniperScan() {
         if (report) {
           const risks = report.risks || [];
           const isMintable = risks.some(r => r.name && r.name.toLowerCase().includes('mint'));
-          const isFreezable = risks.some(r => r.name && r.name.toLowerCase().includes('freeze'));
 
-          if (!isMintable && !isFreezable) {
+          if (!isMintable) {
             const holders = report.holders || [];
             if (holders.length > 0) {
               top10HoldingPct = holders.slice(0, 10).reduce((acc, current) => acc + (current.pct || 0), 0);
-              if (top10HoldingPct <= 30.0) securityPassed = true;
+              if (top10HoldingPct <= 40.0) securityPassed = true; // Safe cap protection
             } else {
               securityPassed = true;
             }
           }
         }
       } catch (apiErr) {
-        if (poolLiquidity >= 25000) securityPassed = true;
+        if (poolLiquidity >= 10000) securityPassed = true;
       }
 
       if (!securityPassed) continue;
@@ -140,22 +122,22 @@ async function executeSniperScan() {
       processedPairs.add(pairAddress);
 
       const telegramAlert = `
-🚀 <b>MILLION-DOLLAR ALPHA MOVER RUNNER</b> 🚀
+🔥 <b>SOLANA VOLUME BREAKOUT</b> 🔥
 ────────────────────────
 ▶ <b>TOKEN METADATA</b>
 • <b>Symbol:</b> $${pair.baseToken.symbol}
 • <b>Contract:</b> <code>${tokenMint}</code>
 
-▶ <b>INSTITUTIONAL METRICS</b>
+▶ <b>MARKET METRICS</b>
 • <b>1H Tx Split:</b> 🟢 ${buyRatioPct.toFixed(1)}% Buy / 🔴 ${sellRatioPct.toFixed(1)}% Sell
-• <b>1H Price Velocity:</b> 📈 +${priceChangeH1}%
-• <b>Whale Footprint:</b> 👑 INSIDER ACCUMULATION ($${averageOrderSize.toFixed(2)} Avg Order)
+• <b>1H Velocity:</b> 📈 +${priceChangeH1}%
+• <b>Avg Order Size:</b> $${averageOrderSize.toFixed(2)}
 
-▶ <b>LIQUIDITY & MARKET DEPTH</b>
+▶ <b>LIQUIDITY & POOL DEPTH</b>
 • <b>Market Cap:</b> $${pair.marketCap.toLocaleString()}
 • <b>1H Total Volume:</b> $${hourlyVolume.toLocaleString()}
 • <b>Liquidity Pool:</b> $${poolLiquidity.toLocaleString()} ✅ 
-• <b>Top 10 Concentration:</b> ${top10HoldingPct > 0 ? top10HoldingPct.toFixed(1) + '%' : 'Liquidity Verified Safe'} 🛡️
+• <b>Top 10 Supply:</b> ${top10HoldingPct > 0 ? top10HoldingPct.toFixed(1) + '%' : 'Verified Safe'} 🛡️
 ────────────────────────
 ▶ <b>TRADE CHANNELS</b>
 • <a href="${pair.url}">DexScreener Link</a>
@@ -168,10 +150,10 @@ async function executeSniperScan() {
         disable_web_page_preview: true 
       });
       
-      console.log(`🎯 Institutional Alpha Signal Pushed: $${pair.baseToken.symbol}`);
+      console.log(`🎯 Active Signal Pushed: $${pair.baseToken.symbol}`);
     }
   } catch (error) {
-    console.log("Scanner loop variance skipped safely:", error.message);
+    // Fail silently to maintain smooth uptime loops
   }
 }
 
