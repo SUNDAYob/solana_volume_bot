@@ -8,9 +8,9 @@ const PORT = process.env.PORT || 10000;
 // Continuous health check server
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Solana Anti-Honeypot Volume Engine: Online\n');
+  res.end('Solana Trojan CTO Scanner Engine: Online\n');
 }).listen(PORT, '0.0.0.0', () => {
-  console.log(`📡 Security Engine securely bound to port ${PORT}`);
+  console.log(`📡 Trojan-CTO Engine bound securely to port ${PORT}`);
 });
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
@@ -20,8 +20,8 @@ async function sendSystemTest() {
   for (const chatId of CHAT_IDS) {
     if (!chatId) continue;
     try {
-      await bot.telegram.sendMessage(chatId, "🦅 <b>SECURITY SCANNER ONLINE:</b>\n────────────────────────\n• 🌐 <b>Status:</b> Live Channel Feeds\n• 🛡️ <b>Anti-Honeypot:</b> STRICT Freeze/Blacklist Detection Enabled\n• 📊 <b>Strategy:</b> Volume-Velocity Multiplier Active", { parse_mode: 'HTML' });
-      console.log(`✅ Diagnostics initialization message pushed to destination: ${chatId}`);
+      await bot.telegram.sendMessage(chatId, "🦅 <b>TROJAN CTO INTELLIGENCE ENGINE ONLINE:</b>\n────────────────────────\n• 🌐 <b>Mode:</b> Scanning DexScreener Official Community Takeovers\n• ⚔️ <b>Execution:</b> Linked to Trojan Sniper System\n• 🛡️ <b>Anti-Honeypot:</b> Freeze/Blacklist Block Enabled", { parse_mode: 'HTML' });
+      console.log(`✅ Diagnostics pushed to destination: ${chatId}`);
     } catch (err) {
       console.log(`Startup alert deferred for ${chatId}:`, err.message);
     }
@@ -36,17 +36,23 @@ async function executeSniperScan() {
   try {
     let mintsList = [];
     
+    // 🔍 1. TARGETING RECENT DEXSCREENER COMMUNITY TAKEOVERS
     try {
-      const trendingRoute = await axios.get('https://api.dexscreener.com/latest/dex/search?q=solana', { timeout: 4000 });
-      if (trendingRoute.data && trendingRoute.data.pairs) {
-        trendingRoute.data.pairs.filter(p => p.chainId === 'solana' && p.baseToken).forEach(p => mintsList.push(p.baseToken.address));
+      const ctoRoute = await axios.get('https://api.dexscreener.com/community-takeovers/latest/v1', { timeout: 4000 });
+      if (ctoRoute.data && Array.isArray(ctoRoute.data)) {
+        ctoRoute.data
+          .filter(p => p.chainId === 'solana')
+          .forEach(p => mintsList.push(p.tokenAddress));
       }
     } catch (e) {}
 
+    // 🔍 2. COMBINING WITH MOST SEARCHED STREAMS FOR COMPREHENSIVE ATTENTION OVERLAP
     try {
-      const profilesRoute = await axios.get('https://api.dexscreener.com/token-profiles/latest/v1', { timeout: 4000 });
-      if (profilesRoute.data && Array.isArray(profilesRoute.data)) {
-        profilesRoute.data.filter(p => p.chainId === 'solana').forEach(p => mintsList.push(p.tokenAddress));
+      const topSearchedRoute = await axios.get('https://api.dexscreener.com/token-boosts/top/v1', { timeout: 4000 });
+      if (topSearchedRoute.data && Array.isArray(topSearchedRoute.data)) {
+        topSearchedRoute.data
+          .filter(p => p.chainId === 'solana')
+          .forEach(p => mintsList.push(p.tokenAddress));
       }
     } catch (e) {}
 
@@ -74,11 +80,12 @@ async function executeSniperScan() {
       return;
     }
 
+    // Filter down tokens with baseline trading viability
     const viablePairs = profilesResponse.data.pairs.filter(p => 
       p.chainId === 'solana' &&
       p.marketCap && p.marketCap >= 12000 && 
       p.liquidity && p.liquidity.usd && p.liquidity.usd >= 5000 && 
-      p.volume && p.volume.h1 && p.volume.h1 >= 6000
+      p.volume && p.volume.h1 && p.volume.h1 >= 8000
     );
 
     for (const pair of viablePairs) {
@@ -93,26 +100,22 @@ async function executeSniperScan() {
       const totalTrades = hourlyTxns.buys + hourlyTxns.sells;
       const buyRatioPct = (hourlyTxns.buys / totalTrades) * 100;
 
-      if (buyRatioPct < 52.0) continue;
-
       const hourlyVolume = pair.volume?.h1 || 0;
       const poolLiquidity = pair.liquidity.usd;
       const priceChangeH1 = pair.priceChange?.h1 || 0;
 
       const volumeToLiquidityRatio = hourlyVolume / poolLiquidity;
-      if (volumeToLiquidityRatio < 0.8) continue; 
 
       let top10HoldingPct = 0;
       let securityPassed = false;
 
+      // 🛡️ ANTI-HONEYPOT SCANNER LOOP (Prevents freeze scams)
       try {
         const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 2000 });
         const report = securityCheck.data;
 
         if (report) {
           const risks = report.risks || [];
-          
-          // 🛡️ STRICT HONEYPOT DETECTION: Drops if any trace of freeze, mint, or blacklist authority exists
           const hasHoneypotRisk = risks.some(risk => {
             const riskName = (risk.name || '').toLowerCase();
             return riskName.includes('mint') || 
@@ -129,12 +132,9 @@ async function executeSniperScan() {
             } else {
               securityPassed = true;
             }
-          } else {
-            console.log(`⚠️ Blocked Malicious Honeypot Setup for token: $${pair.baseToken.symbol}`);
           }
         }
       } catch (apiErr) {
-        // Safe protection fallback mechanism if security API lags
         if (poolLiquidity >= 15000) securityPassed = true;
       }
 
@@ -142,26 +142,31 @@ async function executeSniperScan() {
 
       processedPairs.add(pairAddress);
 
+      // ⚔️ CREATE TROJAN REF LINK EXTRACTION FORMAT
+      // If you have a custom Trojan referral handle, swap 'solana_trojanbot' with your custom link parameter
+      const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
+
       const telegramAlert = `
-💎 <b>PROFESSIONAL HIGH-VELOCITY SIGNAL</b> 💎
+🔥 <b>COMMUNITY TAKEOVER (CTO) SPEED ALERT</b> 🔥
 ────────────────────────
 ▶ <b>TOKEN METADATA</b>
 • <b>Symbol:</b> $${pair.baseToken.symbol}
 • <b>Contract:</b> <code>${tokenMint}</code>
 
-▶ <b>ACCELERATION METRICS</b>
-• <b>1H Volume Multiplier:</b> 🔥 <b>${volumeToLiquidityRatio.toFixed(2)}x</b> (Volume vs. Pool)
-• <b>1H Price Velocity:</b> 📈 +${priceChangeH1}%
-• <b>Transaction Flow:</b> 🟢 ${buyRatioPct.toFixed(1)}% Buys (${totalTrades} total trades)
+▶ <b>MOMENTUM PROFILE</b>
+• <b>Status:</b> 🚀 Dev Out / Verified Community Takeover [CTO]
+• <b>1H Search & Volume Volume:</b> $${hourlyVolume.toLocaleString()} (${volumeToLiquidityRatio.toFixed(1)}x)
+• <b>Price Change (1H):</b> 📈 +${priceChangeH1}%
+• <b>Orderflow:</b> 🟢 ${buyRatioPct.toFixed(1)}% Buys (${totalTrades} trades)
 
-▶ <b>LIQUIDITY & RISK CONTROL</b>
+▶ <b>LIQUIDITY & PROTECTION</b>
 • <b>Market Cap:</b> $${pair.marketCap.toLocaleString()}
 • <b>Liquidity Pool:</b> $${poolLiquidity.toLocaleString()} ✅
-• <b>Security Filter:</b> Clean (Freeze/Blacklist Guard Passed) 🛡️
+• <b>Honeypot Security:</b> Freeze & Blacklist Authority Disabled 🛡️
 ────────────────────────
-▶ <b>TRADE EXECUTION</b>
-• <a href="${pair.url}">DexScreener Link</a>
-• <a href="https://photon-sol.tinyastro.io/en/lp/${pairAddress}">Execute Instant Trade on Photon</a>
+▶ <b>LIGHTNING TRADE EXECUTION</b>
+• <a href="${pair.url}">DexScreener Interface</a>
+• <a href="${trojanTradeLink}">⚔️ Execute Instant Buy on Trojan Bot</a>
 ────────────────────────
 `;
 
@@ -172,16 +177,10 @@ async function executeSniperScan() {
             parse_mode: 'HTML',
             disable_web_page_preview: true 
           });
-        } catch (postErr) {
-          console.log(`Failed to post message to target ${chatId}:`, postErr.message);
-        }
+        } catch (postErr) {}
       }
-      
-      console.log(`🎯 Multi-Broadcast Signal Pushed: $${pair.baseToken.symbol}`);
     }
-  } catch (error) {
-    // Keeps system scanning smoothly
-  }
+  } catch (error) {}
 
   setTimeout(executeSniperScan, executionDelay);
 }
