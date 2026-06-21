@@ -8,9 +8,9 @@ const PORT = process.env.PORT || 10000;
 // Continuous health check server
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Solana Trojan CTO Scanner Engine: Online\n');
+  res.end('Solana Balanced High-Velocity Engine: Online\n');
 }).listen(PORT, '0.0.0.0', () => {
-  console.log(`📡 Trojan-CTO Engine bound securely to port ${PORT}`);
+  console.log(`📡 High-Velocity Engine bound securely to port ${PORT}`);
 });
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
@@ -20,8 +20,7 @@ async function sendSystemTest() {
   for (const chatId of CHAT_IDS) {
     if (!chatId) continue;
     try {
-      await bot.telegram.sendMessage(chatId, "🦅 <b>TROJAN CTO INTELLIGENCE ENGINE ONLINE:</b>\n────────────────────────\n• 🌐 <b>Mode:</b> Scanning DexScreener Official Community Takeovers\n• ⚔️ <b>Execution:</b> Linked to Trojan Sniper System\n• 🛡️ <b>Anti-Honeypot:</b> Freeze/Blacklist Block Enabled", { parse_mode: 'HTML' });
-      console.log(`✅ Diagnostics pushed to destination: ${chatId}`);
+      await bot.telegram.sendMessage(chatId, "🦅 <b>BALANCED HIGH-VELOCITY SCANNER ACTIVE:</b>\n────────────────────────\n• 🌐 <b>Mode:</b> Live On-Chain Trading Feed (CTO & Regular Tokens)\n• ⚔️ <b>Execution:</b> Linked to Trojan Sniper System\n• 📊 <b>Metrics:</b> tracking $30K Vol Floors + Extreme Velocity Multipliers\n• 🛡️ <b>Guard Protocol:</b> Freeze/Blacklist Anti-Honeypot Active", { parse_mode: 'HTML' });
     } catch (err) {
       console.log(`Startup alert deferred for ${chatId}:`, err.message);
     }
@@ -36,17 +35,17 @@ async function executeSniperScan() {
   try {
     let mintsList = [];
     
-    // 🔍 1. TARGETING RECENT DEXSCREENER COMMUNITY TAKEOVERS
+    // 🔍 1. QUERY GLOBAL SOLANA LIVE POOLS TO CAPTURE REAL-TIME TOKEN MOMENTUM
     try {
-      const ctoRoute = await axios.get('https://api.dexscreener.com/community-takeovers/latest/v1', { timeout: 4000 });
-      if (ctoRoute.data && Array.isArray(ctoRoute.data)) {
-        ctoRoute.data
-          .filter(p => p.chainId === 'solana')
-          .forEach(p => mintsList.push(p.tokenAddress));
+      const liveSearchRoute = await axios.get('https://api.dexscreener.com/latest/dex/search?q=solana', { timeout: 4000 });
+      if (liveSearchRoute.data && liveSearchRoute.data.pairs) {
+        liveSearchRoute.data.pairs
+          .filter(p => p.chainId === 'solana' && p.baseToken)
+          .forEach(p => mintsList.push(p.baseToken.address));
       }
     } catch (e) {}
 
-    // 🔍 2. COMBINING WITH MOST SEARCHED STREAMS FOR COMPREHENSIVE ATTENTION OVERLAP
+    // 🔍 2. PARSE TOP BOOSTED TRENDS FOR MAXIMUM ATTENTION TARGETING
     try {
       const topSearchedRoute = await axios.get('https://api.dexscreener.com/token-boosts/top/v1', { timeout: 4000 });
       if (topSearchedRoute.data && Array.isArray(topSearchedRoute.data)) {
@@ -80,12 +79,12 @@ async function executeSniperScan() {
       return;
     }
 
-    // Filter down tokens with baseline trading viability
+    // 🛑 DATA FILTERING: ELIMINATES BAD TOKENS & DEAD ICOS
     const viablePairs = profilesResponse.data.pairs.filter(p => 
       p.chainId === 'solana' &&
-      p.marketCap && p.marketCap >= 12000 && 
-      p.liquidity && p.liquidity.usd && p.liquidity.usd >= 5000 && 
-      p.volume && p.volume.h1 && p.volume.h1 >= 8000
+      p.marketCap && p.marketCap >= 20000 &&                    // Skips micros under $20k market cap
+      p.liquidity && p.liquidity.usd && p.liquidity.usd >= 7000 && // Mandatory healthy liquidity buffer
+      p.volume && p.volume.h1 && p.volume.h1 >= 30000           // 🔥 HARD MOMENTUM LAYER: Must have $30,000+ volume in past hour
     );
 
     for (const pair of viablePairs) {
@@ -98,18 +97,23 @@ async function executeSniperScan() {
       if (!hourlyTxns || !hourlyTxns.buys || !hourlyTxns.sells) continue;
 
       const totalTrades = hourlyTxns.buys + hourlyTxns.sells;
+      if (totalTrades < 60) continue; // Requires active organic trading actions
+
       const buyRatioPct = (hourlyTxns.buys / totalTrades) * 100;
+      if (buyRatioPct < 51.0 || buyRatioPct > 85.0) continue; // Filters out coordinated dev wash trading or instant dumps
 
       const hourlyVolume = pair.volume?.h1 || 0;
       const poolLiquidity = pair.liquidity.usd;
       const priceChangeH1 = pair.priceChange?.h1 || 0;
 
+      // ⚡ CALCULATING HIGH-VELOCITY ACCELERATION MULTIPLIER
       const volumeToLiquidityRatio = hourlyVolume / poolLiquidity;
+      if (volumeToLiquidityRatio < 0.8) continue; // Requires heavy volume relative to pool depth
 
       let top10HoldingPct = 0;
       let securityPassed = false;
 
-      // 🛡️ ANTI-HONEYPOT SCANNER LOOP (Prevents freeze scams)
+      // 🛡️ SECURITY LAYER: ANTI-HONEYPOT BLOCKER
       try {
         const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 2000 });
         const report = securityCheck.data;
@@ -135,38 +139,37 @@ async function executeSniperScan() {
           }
         }
       } catch (apiErr) {
-        if (poolLiquidity >= 15000) securityPassed = true;
+        if (poolLiquidity >= 25000) securityPassed = true; // High trust tier bypass
       }
 
       if (!securityPassed) continue;
 
       processedPairs.add(pairAddress);
 
-      // ⚔️ CREATE TROJAN REF LINK EXTRACTION FORMAT
-      // If you have a custom Trojan referral handle, swap 'solana_trojanbot' with your custom link parameter
+      // ⚔️ TARGETED DIRECT REF-LINK FOR TROJAN SNIPER
       const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
 
       const telegramAlert = `
-🔥 <b>COMMUNITY TAKEOVER (CTO) SPEED ALERT</b> 🔥
+💎 <b>HIGH-VELOCITY MOMENTUM RUNNER</b> 💎
 ────────────────────────
 ▶ <b>TOKEN METADATA</b>
 • <b>Symbol:</b> $${pair.baseToken.symbol}
 • <b>Contract:</b> <code>${tokenMint}</code>
 
-▶ <b>MOMENTUM PROFILE</b>
-• <b>Status:</b> 🚀 Dev Out / Verified Community Takeover [CTO]
-• <b>1H Search & Volume Volume:</b> $${hourlyVolume.toLocaleString()} (${volumeToLiquidityRatio.toFixed(1)}x)
-• <b>Price Change (1H):</b> 📈 +${priceChangeH1}%
-• <b>Orderflow:</b> 🟢 ${buyRatioPct.toFixed(1)}% Buys (${totalTrades} trades)
+▶ <b>ACCELERATION METRICS</b>
+• <b>1H Volume Multiplier:</b> 🔥 <b>${volumeToLiquidityRatio.toFixed(2)}x</b> (Volume vs. Pool)
+• <b>1H Active Volume:</b> 📊 $${hourlyVolume.toLocaleString()} 
+• <b>1H Price Velocity:</b> 📈 +${priceChangeH1}%
+• <b>Orderflow Dynamics:</b> 🟢 ${buyRatioPct.toFixed(1)}% Buys (${totalTrades} total trades)
 
-▶ <b>LIQUIDITY & PROTECTION</b>
+▶ <b>LIQUIDITY & RISK CONTROL</b>
 • <b>Market Cap:</b> $${pair.marketCap.toLocaleString()}
 • <b>Liquidity Pool:</b> $${poolLiquidity.toLocaleString()} ✅
-• <b>Honeypot Security:</b> Freeze & Blacklist Authority Disabled 🛡️
+• <b>Honeypot Filter:</b> Freeze & Blacklist Authority Disabled 🛡️
 ────────────────────────
 ▶ <b>LIGHTNING TRADE EXECUTION</b>
-• <a href="${pair.url}">DexScreener Interface</a>
-• <a href="${trojanTradeLink}">⚔️ Execute Instant Buy on Trojan Bot</a>
+• <a href="${pair.url}">DexScreener Link</a>
+• <a href="${trojanTradeLink}">⚔️ Execute Instant Trade on Trojan Bot</a>
 ────────────────────────
 `;
 
