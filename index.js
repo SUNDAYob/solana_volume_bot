@@ -8,9 +8,9 @@ const PORT = process.env.PORT || 10000;
 // Continuous health check server
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Solana Early-Gem Velocity Engine: Online\n');
+  res.end('Solana Early Micro-Gem Engine: Online\n');
 }).listen(PORT, '0.0.0.0', () => {
-  console.log(`📡 Early-Gem Velocity Engine bound securely to port ${PORT}`);
+  console.log(`📡 Micro-Gem Engine bound securely to port ${PORT}`);
 });
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
@@ -20,7 +20,7 @@ async function sendSystemTest() {
   for (const chatId of CHAT_IDS) {
     if (!chatId) continue;
     try {
-      await bot.telegram.sendMessage(chatId, "🦅 <b>EARLY-GEM VELOCITY SCANNER ONLINE:</b>\n────────────────────────\n• 🌐 <b>Targeting:</b> Low MC On-Chain Micro-Caps\n• 📊 <b>Cap Cap:</b> Strict $20K - $85K Bracket Only 🎯\n• ⚡ <b>Velocity Floor:</b> 1.5x Volume-to-Pool Ratio\n• 🛡️ <b>Guard Protocol:</b> Freeze/Blacklist Anti-Honeypot Active", { parse_mode: 'HTML' });
+      await bot.telegram.sendMessage(chatId, "🦅 <b>EARLY MICRO-GEM SCANNER ONLINE:</b>\n────────────────────────\n• 🌐 <b>Targeting:</b> Low MC Floor Trenches\n• 📊 <b>Cap Bracket:</b> Strict $10K - $50K Bracket Only 🎯\n• ⚡ <b>Velocity Floor:</b> 1.5x Volume-to-Pool Ratio\n• 🛡️ <b>Guard Protocol:</b> Freeze/Blacklist Anti-Honeypot Active", { parse_mode: 'HTML' });
     } catch (err) {
       console.log(`Startup alert deferred for ${chatId}:`, err.message);
     }
@@ -29,7 +29,7 @@ async function sendSystemTest() {
 sendSystemTest();
 
 const processedPairs = new Set();
-let executionDelay = 5000; // Fast execution sweep loops
+let executionDelay = 5000; 
 
 async function executeSniperScan() {
   try {
@@ -79,12 +79,12 @@ async function executeSniperScan() {
       return;
     }
 
-    // 🛑 STAGE 2 FILTERING: THE PRECISION SWEET-SPOT SELECTION PROTOCOL
+    // 🛑 STAGE 2 FILTERING: THE PRECISION MICRO-CAP SWEET-SPOT SELECTION PROTOCOL
     const viablePairs = profilesResponse.data.pairs.filter(p => 
       p.chainId === 'solana' &&
-      p.marketCap && p.marketCap >= 20000 && p.marketCap <= 85000 &&   // 🎯 PRECISION WINDOW: Filters out both dead tokens and high market caps
-      p.liquidity && p.liquidity.usd && p.liquidity.usd >= 6000 &&     // Healthy baseline liquidity
-      p.volume && p.volume.h1 && p.volume.h1 >= 25000                 // Requires real, heavy early-stage trading actions
+      p.marketCap && p.marketCap >= 10000 && p.marketCap <= 50000 &&   // 🎯 MICRO WINDOW: $10,000 to $50,000 ONLY
+      p.liquidity && p.liquidity.usd && p.liquidity.usd >= 3500 &&     // Scaled down to match micro liquidity pools
+      p.volume && p.volume.h1 && p.volume.h1 >= 15000                 // Active hourly trading momentum floor
     );
 
     for (const pair of viablePairs) {
@@ -97,10 +97,10 @@ async function executeSniperScan() {
       if (!hourlyTxns || !hourlyTxns.buys || !hourlyTxns.sells) continue;
 
       const totalTrades = hourlyTxns.buys + hourlyTxns.sells;
-      if (totalTrades < 45) continue; 
+      if (totalTrades < 30) continue; 
 
       const buyRatioPct = (hourlyTxns.buys / totalTrades) * 100;
-      if (buyRatioPct < 52.0 || buyRatioPct > 82.0) continue; // Rejects hyper-washes and massive rug dumps
+      if (buyRatioPct < 51.0 || buyRatioPct > 85.0) continue; 
 
       const hourlyVolume = pair.volume?.h1 || 0;
       const poolLiquidity = pair.liquidity.usd;
@@ -108,7 +108,7 @@ async function executeSniperScan() {
 
       // ⚡ AGGRESSIVE HIGH-VELOCITY ACCELERATION PROTOCOL
       const volumeToLiquidityRatio = hourlyVolume / poolLiquidity;
-      if (volumeToLiquidityRatio < 1.50) continue; // 🔥 FORCED ACCELERATION: Volume must outpace liquidity significantly
+      if (volumeToLiquidityRatio < 1.50) continue; // Volume must significantly outpace pool depth
 
       let top10HoldingPct = 0;
       let securityPassed = false;
@@ -139,18 +139,18 @@ async function executeSniperScan() {
           }
         }
       } catch (apiErr) {
-        if (poolLiquidity >= 20000) securityPassed = true; 
+        if (poolLiquidity >= 15000) securityPassed = true; 
       }
 
       if (!securityPassed) continue;
 
       processedPairs.add(pairAddress);
 
-      // ⚔️ TARGETED DIRECT REF-LINK ROUTING TO TROJAN Sniping Client
+      // ⚔️ TARGETED DIRECT REF-LINK ROUTING TO TROJAN
       const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
 
       const telegramAlert = `
-🚀 <b>EARLY-STAGE HIGH-VELOCITY RUNNER</b> 🚀
+🚀 <b>MICRO-CAP VELOCITY RUNNER</b> 🚀
 ────────────────────────
 ▶ <b>TOKEN METADATA</b>
 • <b>Symbol:</b> $${pair.baseToken.symbol}
@@ -163,7 +163,7 @@ async function executeSniperScan() {
 • <b>Orderflow Dynamics:</b> 🟢 ${buyRatioPct.toFixed(1)}% Buys (${totalTrades} total trades)
 
 ▶ <b>LIQUIDITY & RISK CONTROL</b>
-• <b>Market Cap:</b> 🎯 <b>$${pair.marketCap.toLocaleString()}</b> [EARLY BRACKET]
+• <b>Market Cap:</b> 🎯 <b>$${pair.marketCap.toLocaleString()}</b> [MICRO BRACKET]
 • <b>Liquidity Pool:</b> $${poolLiquidity.toLocaleString()} ✅
 • <b>Honeypot Filter:</b> Freeze & Blacklist Authority Disabled 🛡️
 ────────────────────────
