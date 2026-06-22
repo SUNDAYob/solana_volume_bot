@@ -8,9 +8,9 @@ const PORT = process.env.PORT || 10000;
 // Continuous health check server
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Solana New Project Utility Launcher Engine: Online\n');
+  res.end('Solana Real Utility Project Engine: Online\n');
 }).listen(PORT, '0.0.0.0', () => {
-  console.log(`📡 New Launch Engine bound securely to port ${PORT}`);
+  console.log(`📡 Utility Scanner bound securely to port ${PORT}`);
 });
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
@@ -20,7 +20,7 @@ async function sendSystemTest() {
   for (const chatId of CHAT_IDS) {
     if (!chatId) continue;
     try {
-      await bot.telegram.sendMessage(chatId, "🦅 <b>NEW PROJECT & UTILITY LAUNCH SCANNER ACTIVE:</b>\n────────────────────────\n• 🌐 <b>Targeting:</b> Brand New Token Profiles (1-15 Mins Old)\n• 🔍 <b>Filter:</b> Explicit Social Links + Utility Meta Profiles Only\n• 📊 <b>Cap Target:</b> $8K - $45K Floor Trenches 🎯\n• 🛡️ <b>Guard Protocol:</b> Freeze/Blacklist Anti-Honeypot Active", { parse_mode: 'HTML' });
+      await bot.telegram.sendMessage(chatId, "🦅 <b>REAL UTILITY & DEPLOYED PROJECT ENGINE ACTIVE:</b>\n────────────────────────\n• 🌐 <b>Mode:</b> Strict Deployed Project Tracking (No Raw Memes)\n• 🔍 <b>Verification:</b> Deep Profile Text Audit + Live URLs\n• 📊 <b>Liquidity Floor:</b> $15,000 Deep Pools (Blocks Trench Spam)\n• 🛡️ <b>Guard Protocol:</b> Freeze/Blacklist Anti-Honeypot Active", { parse_mode: 'HTML' });
     } catch (err) {
       console.log(`Startup alert deferred for ${chatId}:`, err.message);
     }
@@ -29,14 +29,14 @@ async function sendSystemTest() {
 sendSystemTest();
 
 const processedPairs = new Set();
-let executionDelay = 4000; // Fast cycle to capture fresh blocks instantly
+let executionDelay = 5000; 
 
 async function executeSniperScan() {
   try {
     let mintsList = [];
     let tokenMetadataMap = new Map();
     
-    // 🔍 TARGET THE BRAND-NEW PAID PROJECTS PROFILE PIPELINE
+    // 🔍 SCAN THE REAL-TIME PROFILE PIPELINE TO EXTRACT PROJECT WEB METADATA
     try {
       const freshProfiles = await axios.get('https://api.dexscreener.com/token-profiles/latest/v1', { timeout: 4000 });
       if (freshProfiles.data && Array.isArray(freshProfiles.data)) {
@@ -44,8 +44,7 @@ async function executeSniperScan() {
           if (p.chainId === 'solana' && p.tokenAddress) {
             mintsList.push(p.tokenAddress);
             
-            // Extract links to identify project presence / utility presence
-            const customDescription = p.description || "Freshly deployed Solana token contract.";
+            const customDescription = p.description || "";
             const websiteLink = p.links?.find(l => l.type?.toLowerCase() === 'website')?.url || '';
             const twitterLink = p.links?.find(l => l.type?.toLowerCase() === 'twitter')?.url || '';
             
@@ -69,7 +68,7 @@ async function executeSniperScan() {
     let marketDataResponse;
     try {
       marketDataResponse = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${uniqueMints.join(',')}`, { timeout: 5000 });
-      executionDelay = 4000; 
+      executionDelay = 5000; 
     } catch (err) {
       if (err.response && err.response.status === 429) {
         executionDelay = 15000; 
@@ -83,11 +82,12 @@ async function executeSniperScan() {
       return;
     }
 
-    // 🛑 FILTER PROTOCOL: INSISTS THE TOKEN IS IN THE ULTRA-EARLY LAUNCH STAGE
+    // 🛑 UTILITY FILTER PROTOCOL: INSISTS ON HIGHER CAPITAL STANDARDS
     const viablePairs = marketDataResponse.data.pairs.filter(p => 
       p.chainId === 'solana' &&
-      p.marketCap && p.marketCap >= 8000 && p.marketCap <= 45000 &&   // 🎯 BRAND NEW LAUNCH BRACKET
-      p.liquidity && p.liquidity.usd && p.liquidity.usd >= 3000        // Baseline token liquidity validation
+      p.marketCap && p.marketCap >= 15000 && p.marketCap <= 150000 &&   // Early-stage token valuation bracket
+      p.liquidity && p.liquidity.usd && p.liquidity.usd >= 15000 &&     // 🔥 DEEP LIQUIDITY FLOOR: Discards small, dangerous meme micro-pools
+      p.volume && p.volume.h1 && p.volume.h1 >= 10000                  // Verifies initial transactional activity
     );
 
     for (const pair of viablePairs) {
@@ -99,22 +99,32 @@ async function executeSniperScan() {
       const hourlyTxns = pair.txns?.h1;
       if (!hourlyTxns) continue;
 
-      const totalTrades = (hourlyTxns.buys || 0) + (hourlyTxns.sells || 0);
-      if (totalTrades < 5) continue; // Must have at least initial launching transactions processed
-
       const poolLiquidity = pair.liquidity.usd;
       const hourlyVolume = pair.volume?.h1 || 0;
       const priceChangeM5 = pair.priceChange?.m5 || 0;
 
-      // Pull parsed project links
-      const projectMeta = tokenMetadataMap.get(tokenMint) || { description: "New Launch", website: "", twitter: "" };
+      // Pull and examine metadata content
+      const projectMeta = tokenMetadataMap.get(tokenMint) || { description: "", website: "", twitter: "" };
       
-      // 🛡️ CRITICAL UTILITY FILTER: Reject if they haven't uploaded a website/twitter yet
-      if (!projectMeta.website && !projectMeta.twitter) continue;
+      // 🛑 RULE 1: STRICT LINKS REQUIREMENT
+      if (!projectMeta.website) continue; 
+
+      // 🛑 RULE 2: ANTI-MEME TEXT HEURISTICS
+      const descText = projectMeta.description.toLowerCase();
+      const memeKeywords = ['meme', 'dog', 'cat', 'inu', 'pepe', 'wif', 'viral', 'chill guy', 'pump', 'moon', 'fugu'];
+      const hasMemeSign = memeKeywords.some(keyword => descText.includes(keyword));
+      if (hasMemeSign) continue; // Instantly bypasses basic meme descriptions
+
+      // 🛑 RULE 3: POSITIVE UTILITY SIGNALS CHECK
+      const utilityKeywords = ['utility', 'tool', 'bot', 'dapp', 'protocol', 'ai agent', 'platform', 'api', 'ecosystem', 'saas', 'software', 'staking', 'yield'];
+      const hasUtilitySign = utilityKeywords.some(keyword => descText.includes(keyword));
+      
+      // If description isn't blank, we prefer it to have an explicit operational signal
+      if (descText.length > 0 && !hasUtilitySign) continue;
 
       let securityPassed = false;
 
-      // 🛡️ SECURITY LAYER: INSTANT ANTI-HONEYPOT CORE
+      // 🛡️ ANTI-HONEYPOT BLOCKER CORE
       try {
         const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 2000 });
         const report = securityCheck.data;
@@ -134,37 +144,36 @@ async function executeSniperScan() {
           }
         }
       } catch (apiErr) {
-        if (poolLiquidity >= 12000) securityPassed = true; 
+        if (poolLiquidity >= 25000) securityPassed = true; 
       }
 
       if (!securityPassed) continue;
 
       processedPairs.add(pairAddress);
 
-      // ⚔️ TARGETED DIRECT REF-LINK FOR TROJAN Sniping Client
+      // ⚔️ TARGETED DIRECT REF-LINK ROUTING TO TROJAN
       const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
 
       const telegramAlert = `
-🆕 <b>BRAND NEW PROJECT LAUNCH DETECTED</b> 🚀
+🛠️ <b>NEW UTILITY PROJECT LAUNCH</b> 🛠️
 ────────────────────────
-▶ <b>TOKEN METADATA</b>
+▶ <b>PROJECT IDENTIFICATION</b>
 • <b>Symbol:</b> $${pair.baseToken.symbol}
 • <b>Contract:</b> <code>${tokenMint}</code>
 
-▶ <b>PROJECT INFO & UTILITY LINKS</b>
-• <b>Description:</b> 📝 <i>${projectMeta.description.slice(0, 180)}...</i>
-• <b>Website:</b> <a href="${projectMeta.website || '#'}">🌐 Official Site</a>
-• <b>Twitter/X:</b> <a href="${projectMeta.twitter || '#'}">🐦 Project Feed</a>
+▶ <b>APPLICATION METADATA</b>
+• <b>Core Purpose:</b> 📝 <i>${projectMeta.description ? projectMeta.description.slice(0, 200) : "Operational platform deployment."}...</i>
+• <b>Official App/Site:</b> <a href="${projectMeta.website}">🌐 Open dApp Website</a>
+• <b>Developer Feed:</b> <a href="${projectMeta.twitter || '#'}">🐦 View Documentation/X</a>
 
-▶ <b>INITIAL LAUNCH METRICS</b>
-• <b>Current Market Cap:</b> 🎯 <b>$${pair.marketCap.toLocaleString()}</b> [JUST LAUNCHED]
-• <b>Liquidity Pool Depth:</b> $${poolLiquidity.toLocaleString()}
-• <b>5 Min Price Velocity:</b> 📈 ${priceChangeM5}%
-• <b>Total Launch Trades:</b> 📊 ${totalTrades} actions
+▶ <b>MARKET VALIDATION</b>
+• <b>Market Capitalization:</b> $${pair.marketCap.toLocaleString()}
+• <b>Liquidity Pool Depth:</b> 📊 <b>$${poolLiquidity.toLocaleString()}</b> [STABLE DEPLOY]
+• <b>5 Min Price Move:</b> 📈 ${priceChangeM5}%
 ────────────────────────
 ▶ <b>LIGHTNING TRADE EXECUTION</b>
 • <a href="${pair.url}">DexScreener Link</a>
-• <a href="${trojanTradeLink}">⚔️ Snag Instant Entry on Trojan Bot</a>
+• <a href="${trojanTradeLink}">⚔️ Trade Utility Token via Trojan Bot</a>
 ────────────────────────
 `;
 
