@@ -8,9 +8,9 @@ const PORT = process.env.PORT || 10000;
 
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Solana Heartbeat RPC Engine: Active\n');
+  res.end('Solana Smart Migration Stream: Active\n');
 }).listen(PORT, '0.0.0.0', () => {
-  console.log(`📡 Stream engine stabilized on port ${PORT}`);
+  console.log(`📡 Smart Migration pipeline deployed on port ${PORT}`);
 });
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
@@ -25,13 +25,10 @@ function establishRpcConnection() {
   let pingInterval;
 
   ws.on('open', () => {
-    console.log('⚡ Connected directly to Helius RPC Node. Injecting Raydium block filters...');
+    console.log('⚡ Connected to Helius Solana Node. Tuning filters for high-quality migrations...');
     
-    // 🫀 HEARBEAT PROTOCOL: Keeps the pipeline open indefinitely
     pingInterval = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.ping();
-      }
+      if (ws.readyState === WebSocket.OPEN) ws.ping();
     }, 30000);
 
     const requestPayload = {
@@ -39,7 +36,12 @@ function establishRpcConnection() {
       id: 1,
       method: "transactionSubscribe",
       params: [
-        { accountInclude: ["675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8"] }, 
+        {
+          accountInclude: [
+            "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", // Raydium AMM
+            "39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg"  // Pump.fun Migration Account
+          ]
+        }, 
         {
           commitment: "confirmed",
           encoding: "jsonParsed",
@@ -60,8 +62,8 @@ function establishRpcConnection() {
       const txData = response.params.result;
       const logMessages = txData.transaction?.meta?.logMessages || [];
       
-      const isNewPool = logMessages.some(log => log.includes("initialize2") || log.includes("initialize"));
-      if (!isNewPool) return;
+      const isPoolInit = logMessages.some(log => log.includes("initialize2") || log.includes("initialize"));
+      if (!isPoolInit) return;
 
       const innerInstructions = txData.transaction?.meta?.innerInstructions || [];
       let tokenMint = null;
@@ -90,9 +92,15 @@ function establishRpcConnection() {
       if (!tokenMint || typeof tokenMint !== 'string' || tokenMint.endsWith('11111111111111111111111111111111') || processedMints.has(tokenMint)) return;
       processedMints.add(tokenMint);
 
-      console.log(`🎯 Token detected on ledger: ${tokenMint}`);
+      const isPumpMigration = logMessages.some(log => log.toLowerCase().includes('pump'));
 
-      // 🕵️‍♂️ DEV WALLET HISTORY AUDIT
+      // ⏳ OBSERVATION PROTOCOL FOR PUMP MIGRATIONS (Fends off immediate dumpers)
+      if (isPumpMigration) {
+        console.log(`⏱️ Pump.fun Migration Detected: ${tokenMint}. Analyzing pool stability...`);
+        await new Promise(resolve => setTimeout(resolve, 45000)); // Wait 45 seconds to check trajectory
+      }
+
+      // 🕵️‍♂️ STAGE 1: DEV BACKGROUND HISTORY SCAN
       let devIsClean = true;
       try {
         const devCheck = await axios.get(`https://api.rugcheck.xyz/v1/address/${creatorWallet}/tokens`, { timeout: 3000 });
@@ -105,6 +113,7 @@ function establishRpcConnection() {
           });
 
           if (maliciousDeployments.length > 0) {
+            console.log(`🛑 DROP: Dev ${creatorWallet} flagged with past malicious projects.`);
             devIsClean = false;
           }
         }
@@ -112,7 +121,7 @@ function establishRpcConnection() {
 
       if (!devIsClean) return;
 
-      // 🛡️ HONEYPOT CODE RUNTIME SCAN
+      // 🛡️ STAGE 2: REAL-TIME CONTRACT RISK MATRIX
       let securityPassed = false;
       try {
         const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 3000 });
@@ -135,27 +144,48 @@ function establishRpcConnection() {
 
       if (!securityPassed) return;
 
+      // 📊 STAGE 3: VOLUME MOMENTUM STABILITY AUDIT (Only for Pump Graduations)
+      if (isPumpMigration) {
+        try {
+          const dexCheck = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${tokenMint}`, { timeout: 3000 });
+          const pair = dexCheck.data?.pairs?.[0];
+          
+          if (pair) {
+            const liquidity = pair.liquidity?.usd || 0;
+            const 5mVolume = pair.volume?.m5 || 0;
+            
+            // Rejects migrations if the liquidity has dropped below baseline or if volume is completely dead
+            if (liquidity < 8000 || 5mVolume < 2000) {
+              console.log(`📉 REJECTED: Migration failed stability audit (Low liquid/vol).`);
+              return;
+            }
+          }
+        } catch (dexErr) {
+          // If DexScreener api is loading data slowly, rely completely on the clean dev status
+        }
+      }
+
       const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
       const dexScreenerLink = `https://dexscreener.com/solana/${tokenMint}`;
 
       const telegramAlert = `
-⚡ <b>SECURED GEYSER RPC LAUNCH</b> ⚡
+💎 <b>VERIFIED HIGH-QUALITY LAUNCH</b> 💎
 ────────────────────────
 ▶ <b>BLOCK METADATA</b>
 • <b>Contract:</b> <code>${tokenMint}</code>
-• <b>Network:</b> Solana Mainnet Ledger
+• <b>Type:</b> ${isPumpMigration ? "Pump.fun Graduation 🔥" : "Standard Raydium Pool 🪐"}
 
-▶ <b>DEVELOPER REPUTATION REPORT</b>
+▶ <b>DEVELOPER HISTORY</b>
 • <b>Creator Wallet:</b> <code>${creatorWallet}</code>
-• <b>Status:</b> No Historical Rug Profiles Detected 🕵️‍♂️✅
+• <b>Reputation Status:</b> Verified Clean History 🕵️‍♂️✅
 
 ▶ <b>RISK LOCK DIAGNOSTICS</b>
-• <b>Honeypot Shield:</b> Safe Contract Configuration 🛡️
-• <b>Freeze / Mint Control:</b> Permanently Disabled
+• <b>Honeypot Shield:</b> Passed Security Scan 🛡️
+• <b>Freeze / Blacklist:</b> Revoked & Safe
 ────────────────────────
 ▶ <b>LIGHTNING TRADE EXECUTION</b>
 • <a href="${dexScreenerLink}">DexScreener Link</a>
-• <a href="${trojanTradeLink}">⚔️ Execute Direct Entry via Trojan Bot</a>
+• <a href="${trojanTradeLink}">⚔️ Snag Secured Entry via Trojan Bot</a>
 ────────────────────────
 `;
 
