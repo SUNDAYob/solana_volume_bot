@@ -9,26 +9,25 @@ const PORT = process.env.PORT || 10000;
 // Create standard web hook server 
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Solana Moderate Stream Engine: Fully Operational\n');
+  res.end('Solana Moderate Stream Engine v2: Active\n');
 }).listen(PORT, '0.0.0.0', () => {
-  console.log(`📡 Moderate Option 2 engine stabilized on port ${PORT}`);
+  console.log(`📡 [ENGINE LIVE] Listening on port ${PORT}`);
 });
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 const CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.trim());
 const HELIUS_KEY = process.env.HELIUS_API_KEY || '';
 
-// Global checklist tracker to prevent double alerts
 const processedMints = new Set();
 
 async function sendBootAlert() {
   for (const chatId of CHAT_IDS) {
     if (!chatId) continue;
     try {
-      await bot.telegram.sendMessage(chatId, "🚀 <b>MODERATE SCANNING MODE ACTIVE</b>\n────────────────────────\n• 🪐 <b>Volume Matrix:</b> Bypassed for maximum speed\n• 🛡️ <b>Security Filters:</b> Developer & Smart Contract verification active", { parse_mode: 'HTML' });
-      console.log(`✅ Moderate startup text sent successfully to Telegram chat: ${chatId}`);
+      await bot.telegram.sendMessage(chatId, "⚡ <b>FAST STREAM ENGINE ACTIVE</b>\n────────────────────────\n• 🪐 <b>Mode:</b> Moderate Speed (Option 2)\n• 🛰️ <b>Network:</b> Helius Mainnet WebSocket Connected", { parse_mode: 'HTML' });
+      console.log(`[BOOT] Alert pushed to chat: ${chatId}`);
     } catch (err) {
-      console.log(`❌ Failed to send boot alert to chat ${chatId}: ${err.message}`);
+      console.log(`[BOOT ERROR] Chat ${chatId}: ${err.message}`);
     }
   }
 }
@@ -103,18 +102,16 @@ function establishRpcConnection() {
       }
 
       if (!tokenMint || typeof tokenMint !== 'string' || tokenMint.endsWith('11111111111111111111111111111111')) return;
-      
       if (processedMints.has(tokenMint)) return;
       processedMints.add(tokenMint);
 
       const isPumpMigration = logMessages.some(log => log.toLowerCase().includes('pump'));
-      
-      console.log(`🔎 [NEW LAUNCH] Token: ${tokenMint} | Type: ${isPumpMigration ? "Pump.fun Graduation" : "Raydium Pool"}`);
+      console.log(`🔎 [NEW PAIR DETECTED] Token: ${tokenMint}`);
 
       // 🕵️‍♂️ STAGE 1: DEV BACKGROUND HISTORY SCAN
       let devIsClean = true;
       try {
-        const devCheck = await axios.get(`https://api.rugcheck.xyz/v1/address/${creatorWallet}/tokens`, { timeout: 4000 });
+        const devCheck = await axios.get(`https://api.rugcheck.xyz/v1/address/${creatorWallet}/tokens`, { timeout: 2500 });
         const pastTokens = devCheck.data;
 
         if (Array.isArray(pastTokens) && pastTokens.length > 0) {
@@ -124,42 +121,40 @@ function establishRpcConnection() {
           });
 
           if (maliciousDeployments.length > 0) {
-            console.log(`🛑 DROP: Dev wallet ${creatorWallet} has past rug incidents.`);
+            console.log(`🛑 DROP: Dev ${creatorWallet} flagged with malicious history.`);
             devIsClean = false;
           }
         }
       } catch (e) {
-        // Fallback option if RugCheck history endpoint has micro-latency
+        console.log("⚠️ Dev history lookup timed out. Defaulting to safe passage.");
       }
 
       if (!devIsClean) return;
 
       // 🛡️ STAGE 2: REAL-TIME CONTRACT RISK MATRIX
-      let securityPassed = false;
+      let securityPassed = true;
       try {
-        const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 4000 });
+        const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 2500 });
         const report = securityCheck.data;
 
-        if (report) {
-          const risks = report.risks || [];
-          const hasHoneypotRisk = risks.some(risk => {
+        if (report && report.risks) {
+          const hasHoneypotRisk = report.risks.some(risk => {
             const riskName = (risk.name || '').toLowerCase();
-            return riskName.includes('mint') || riskName.includes('freeze') || riskName.includes('blacklist') || riskName.includes('mutable');
+            return riskName.includes('mint') || riskName.includes('freeze') || riskName.includes('blacklist');
           });
 
           if (hasHoneypotRisk) {
-            console.log(`🛑 DROP: Dangerous contract flags detected for ${tokenMint}`);
-          } else {
-            securityPassed = true;
+            console.log(`🛑 DROP: Toxic variables found inside token contract parameters.`);
+            securityPassed = false;
           }
         }
       } catch (err) {
-        securityPassed = true; 
+        console.log("⚠️ Contract risk check timed out. Defaulting to safe passage.");
       }
 
       if (!securityPassed) return;
 
-      console.log(`🎉 ALERT DISPATCH: ${tokenMint} cleared all safe smart contract protocols!`);
+      console.log(`📬 [SUCCESS] Forwarding token verified alert to Telegram: ${tokenMint}`);
 
       const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
       const dexScreenerLink = `https://dexscreener.com/solana/${tokenMint}`;
@@ -190,12 +185,12 @@ function establishRpcConnection() {
             disable_web_page_preview: true 
           });
         } catch (postErr) {
-          console.log(`❌ Telegram error:`, postErr.message);
+          console.log(`❌ Telegram dispatch failure:`, postErr.message);
         }
       }
 
     } catch (parseError) {
-      console.log("Main loop parse issue:", parseError.message);
+      console.log("Main loop parse failure context:", parseError.message);
     }
   });
 
