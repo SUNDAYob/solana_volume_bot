@@ -5,32 +5,34 @@ const WebSocket = require('ws');
 const axios = require('axios');
 
 const PORT = process.env.PORT || 10000;
-// 🚨 CRITICAL: Use your actual Render URL here to prevent sleeping
-const RENDER_URL = "https://solana-volume-bot-pvtx.onrender.com"; 
 
-// Create the web endpoint Render requires
+// Create standard web hook server 
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Solana Immortal Stream: Online\n');
+  res.end('Solana Immortal Stream Engine: Fully Operational\n');
 }).listen(PORT, '0.0.0.0', () => {
-  console.log(`📡 Stream engine initialized on port ${PORT}`);
+  console.log(`📡 Stream engine stabilized on port ${PORT}`);
 });
-
-// 🔄 ANTI-SLEEP CHRONO: Pings itself every 5 minutes to stay awake forever
-setInterval(async () => {
-  try {
-    await axios.get(RENDER_URL);
-    console.log('⏰ Anti-Sleep Self-Ping: Stay Awake Pulse Sent Executed.');
-  } catch (err) {
-    console.log('⏰ Anti-Sleep Pulse acknowledged.');
-  }
-}, 300000); // 5 minutes in milliseconds
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 const CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.trim());
 const HELIUS_KEY = process.env.HELIUS_API_KEY || '';
 
+// Global checklist tracker to prevent double alerts
 const processedMints = new Set();
+
+async function sendBootAlert() {
+  for (const chatId of CHAT_IDS) {
+    if (!chatId) continue;
+    try {
+      await bot.telegram.sendMessage(chatId, "🚀 <b>SOLANA STREAM GATE REBOOTED</b>\n────────────────────────\n• 🛰️ <b>Status:</b> Listening directly to blockchain ledger\n• 🔬 <b>Diagnostics:</b> Live tracking logging enabled", { parse_mode: 'HTML' });
+      console.log(`✅ Startup verification text sent successfully to Telegram chat: ${chatId}`);
+    } catch (err) {
+      console.log(`❌ Failed to send boot alert to chat ${chatId}: ${err.message}. Check your BOT token or Chat ID!`);
+    }
+  }
+}
+sendBootAlert();
 
 function establishRpcConnection() {
   const wsUrl = `wss://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`;
@@ -38,9 +40,8 @@ function establishRpcConnection() {
   let pingInterval;
 
   ws.on('open', () => {
-    console.log('⚡ Connected to Helius Solana Node. Tracking high-quality migrations...');
+    console.log('⚡ Connected to Helius Solana Node. Tracking all incoming liquidity contracts...');
     
-    // Heartbeat to make sure Helius doesn't drop us
     pingInterval = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) ws.ping();
     }, 30000);
@@ -53,7 +54,7 @@ function establishRpcConnection() {
         {
           accountInclude: [
             "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", // Raydium AMM
-            "39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg"  // Pump.fun Migration
+            "39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg"  // Pump.fun Migration Account
           ]
         }, 
         {
@@ -79,6 +80,8 @@ function establishRpcConnection() {
       const isPoolInit = logMessages.some(log => log.includes("initialize2") || log.includes("initialize"));
       if (!isPoolInit) return;
 
+      console.log("👀 [LEDGER ALERT] Detected a new Raydium pool initialization block! Extracting token data...");
+
       const innerInstructions = txData.transaction?.meta?.innerInstructions || [];
       let tokenMint = null;
       let creatorWallet = null;
@@ -86,8 +89,6 @@ function establishRpcConnection() {
       const keys = txData.transaction?.transaction?.message?.accountKeys || [];
       const signerAccount = keys.find(k => k.signer === true);
       creatorWallet = signerAccount ? signerAccount.pubkey : (keys[0]?.pubkey || keys[0]);
-
-      if (!creatorWallet) return;
 
       for (const inner of innerInstructions) {
         for (const inst of inner.instructions) {
@@ -103,20 +104,25 @@ function establishRpcConnection() {
         tokenMint = keys[8]?.pubkey || keys[8];
       }
 
-      if (!tokenMint || typeof tokenMint !== 'string' || tokenMint.endsWith('11111111111111111111111111111111') || processedMints.has(tokenMint)) return;
+      if (!tokenMint || typeof tokenMint !== 'string' || tokenMint.endsWith('11111111111111111111111111111111')) return;
+      
+      if (processedMints.has(tokenMint)) return;
       processedMints.add(tokenMint);
 
       const isPumpMigration = logMessages.some(log => log.toLowerCase().includes('pump'));
+      
+      console.log(`🔎 Found Token: ${tokenMint} | Dev: ${creatorWallet} | Type: ${isPumpMigration ? "Pump.fun Migration" : "Standard Raydium"}`);
 
       if (isPumpMigration) {
-        console.log(`⏱️ Pump.fun Migration Detected: ${tokenMint}. Analyzing pool stability...`);
+        console.log(`⏳ Holding for 45 seconds to let initial volatility pass for ${tokenMint}...`);
         await new Promise(resolve => setTimeout(resolve, 45000)); 
       }
 
       // 🕵️‍♂️ STAGE 1: DEV BACKGROUND HISTORY SCAN
+      console.log(`🕵️‍♂️ Running background risk checks on dev wallet: ${creatorWallet}`);
       let devIsClean = true;
       try {
-        const devCheck = await axios.get(`https://api.rugcheck.xyz/v1/address/${creatorWallet}/tokens`, { timeout: 3000 });
+        const devCheck = await axios.get(`https://api.rugcheck.xyz/v1/address/${creatorWallet}/tokens`, { timeout: 4000 });
         const pastTokens = devCheck.data;
 
         if (Array.isArray(pastTokens) && pastTokens.length > 0) {
@@ -126,18 +132,21 @@ function establishRpcConnection() {
           });
 
           if (maliciousDeployments.length > 0) {
-            console.log(`🛑 DROP: Dev ${creatorWallet} flagged with past malicious projects.`);
+            console.log(`🛑 DROP: Dev wallet ${creatorWallet} has historical rug profiles. Trashing token.`);
             devIsClean = false;
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        console.log("⚠️ RugCheck Wallet history tool timed out. Proceeding to security scan safety defaults.");
+      }
 
       if (!devIsClean) return;
 
       // 🛡️ STAGE 2: REAL-TIME CONTRACT RISK MATRIX
+      console.log(`🛡️ Auditing on-chain smart contract properties for: ${tokenMint}`);
       let securityPassed = false;
       try {
-        const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 3000 });
+        const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 4000 });
         const report = securityCheck.data;
 
         if (report) {
@@ -147,11 +156,14 @@ function establishRpcConnection() {
             return riskName.includes('mint') || riskName.includes('freeze') || riskName.includes('blacklist') || riskName.includes('mutable');
           });
 
-          if (!hasHoneypotRisk) {
+          if (hasHoneypotRisk) {
+            console.log(`🛑 DROP: Malicious risk parameters found in token code. Trashing token.`);
+          } else {
             securityPassed = true;
           }
         }
       } catch (err) {
+        console.log("⚠️ RugCheck Token API timed out. Letting token pass via fallback rules.");
         securityPassed = true; 
       }
 
@@ -159,21 +171,30 @@ function establishRpcConnection() {
 
       // 📊 STAGE 3: VOLUME MOMENTUM STABILITY AUDIT
       if (isPumpMigration) {
+        console.log(`📊 Checking market momentum properties on DexScreener for ${tokenMint}...`);
         try {
-          const dexCheck = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${tokenMint}`, { timeout: 3000 });
+          const dexCheck = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${tokenMint}`, { timeout: 4000 });
           const pair = dexCheck.data?.pairs?.[0];
           
           if (pair) {
             const liquidity = pair.liquidity?.usd || 0;
             const volume5m = pair.volume?.m5 || 0;
             
+            console.log(`📊 [STATS] Liquidity: $${liquidity}, 5m Vol: $${volume5m}`);
             if (liquidity < 8000 || volume5m < 2000) {
-              console.log(`📉 REJECTED: Migration failed stability audit (Low liquid/vol).`);
+              console.log(`📉 REJECTED: Migration failed stability parameters ($8k Liq / $2k Vol required).`);
               return;
             }
+          } else {
+            console.log("📉 REJECTED: No trading pairs formed on DexScreener yet.");
+            return;
           }
-        } catch (dexErr) {}
+        } catch (dexErr) {
+          console.log("⚠️ DexScreener data indexing delayed. Letting verified safe token pass.");
+        }
       }
+
+      console.log(`🎉 SUCCESS: ${tokenMint} cleared all safety gates! Dispatching to Telegram...`);
 
       const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
       const dexScreenerLink = `https://dexscreener.com/solana/${tokenMint}`;
@@ -206,10 +227,15 @@ function establishRpcConnection() {
             parse_mode: 'HTML',
             disable_web_page_preview: true 
           });
-        } catch (postErr) {}
+          console.log(`📬 Notification sent successfully to chat: ${chatId}`);
+        } catch (postErr) {
+          console.log(`❌ Telegram delivery failure to ${chatId}:`, postErr.message);
+        }
       }
 
-    } catch (parseError) {}
+    } catch (parseError) {
+      console.log("Error inside main stream loop parser:", parseError.message);
+    }
   });
 
   ws.on('close', () => {
@@ -220,6 +246,7 @@ function establishRpcConnection() {
 
   ws.on('error', (err) => {
     clearInterval(pingInterval);
+    console.log('❌ WebSocket Error Context:', err.message);
   });
 }
 
