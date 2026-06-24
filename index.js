@@ -94,7 +94,7 @@ function establishRpcConnection() {
 
       const isPumpMigration = logMessages.some(log => log.toLowerCase().includes('pump'));
 
-      // ⏳ OBSERVATION PROTOCOL FOR PUMP MIGRATIONS (Fends off immediate dumpers)
+      // ⏳ OBSERVATION PROTOCOL FOR PUMP MIGRATIONS
       if (isPumpMigration) {
         console.log(`⏱️ Pump.fun Migration Detected: ${tokenMint}. Analyzing pool stability...`);
         await new Promise(resolve => setTimeout(resolve, 45000)); // Wait 45 seconds to check trajectory
@@ -144,7 +144,7 @@ function establishRpcConnection() {
 
       if (!securityPassed) return;
 
-      // 📊 STAGE 3: VOLUME MOMENTUM STABILITY AUDIT (Only for Pump Graduations)
+      // 📊 STAGE 3: VOLUME MOMENTUM STABILITY AUDIT
       if (isPumpMigration) {
         try {
           const dexCheck = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${tokenMint}`, { timeout: 3000 });
@@ -152,16 +152,15 @@ function establishRpcConnection() {
           
           if (pair) {
             const liquidity = pair.liquidity?.usd || 0;
-            const 5mVolume = pair.volume?.m5 || 0;
+            const volume5m = pair.volume?.m5 || 0; // Fixes variable formatting layout typo
             
-            // Rejects migrations if the liquidity has dropped below baseline or if volume is completely dead
-            if (liquidity < 8000 || 5mVolume < 2000) {
+            if (liquidity < 8000 || volume5m < 2000) {
               console.log(`📉 REJECTED: Migration failed stability audit (Low liquid/vol).`);
               return;
             }
           }
         } catch (dexErr) {
-          // If DexScreener api is loading data slowly, rely completely on the clean dev status
+          // Fallback pass if data systems take an extra second to compile
         }
       }
 
