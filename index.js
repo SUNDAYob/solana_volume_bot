@@ -6,6 +6,7 @@ const axios = require('axios');
 
 const PORT = process.env.PORT || 10000;
 
+// Create standard web hook server 
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('Solana Guard Engine: Active\n');
@@ -23,10 +24,10 @@ async function sendBootAlert() {
   for (const chatId of CHAT_IDS) {
     if (!chatId) continue;
     try {
-      await bot.telegram.sendMessage(chatId, "⚡ <b>FAST STREAM ENGINE ACTIVE</b>\n────────────────────────\n• 🪐 <b>Mode:</b> Option 2 Connected\n• 🛰️ <b>Network:</b> Guard Online", { parse_mode: 'HTML' });
+      await bot.telegram.sendMessage(chatId, "⚡ <b>FAST STREAM ENGINE ACTIVE</b>\n────────────────────────\n• 🪐 <b>Mode:</b> Option 2 Connected\n• 🛰️ <b>Network:</b> Guard Online with Live Heartbeat", { parse_mode: 'HTML' });
       console.log(`[BOOT SUCCESS] Sent notification to chat target: ${chatId}`);
     } catch (err) {
-      console.log(`[BOOT ERROR] Target ${chatId} rejected payload: ${err.message}. Ensure ID is numeric and bot is admin!`);
+      console.log(`[BOOT ERROR] Target ${chatId} rejected payload: ${err.message}`);
     }
   }
 }
@@ -36,13 +37,20 @@ function establishRpcConnection() {
   const wsUrl = `wss://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`;
   const ws = new WebSocket(wsUrl);
   let pingInterval;
+  let heartbeatInterval;
 
   ws.on('open', () => {
     console.log('⚡ Connected to Helius Solana Node. Stream actively parsing blocks...');
     
+    // Web socket ping keep alive
     pingInterval = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) ws.ping();
     }, 30000);
+
+    // Visual dashboard heartbeat log (Prints every 60 seconds)
+    heartbeatInterval = setInterval(() => {
+      console.log(`💚 [HEARTBEAT] WebSocket connection healthy. Listening for next Solana block migration...`);
+    }, 60000);
 
     const requestPayload = {
       jsonrpc: "2.0",
@@ -107,7 +115,7 @@ function establishRpcConnection() {
       const isPumpMigration = logMessages.some(log => log.toLowerCase().includes('pump'));
       console.log(`🔎 [SCANNING] Found Pair: ${tokenMint}`);
 
-      // 🕵️‍♂️ STAGE 1: DEV BACKGROUND HISTORY SCAN
+      // STAGE 1: DEV BACKGROUND HISTORY SCAN
       let devIsClean = true;
       try {
         const devCheck = await axios.get(`https://api.rugcheck.xyz/v1/address/${creatorWallet}/tokens`, { timeout: 2500 });
@@ -130,7 +138,7 @@ function establishRpcConnection() {
 
       if (!devIsClean) return;
 
-      // 🛡️ STAGE 2: REAL-TIME CONTRACT RISK MATRIX
+      // STAGE 2: REAL-TIME CONTRACT RISK MATRIX
       let securityPassed = true;
       try {
         const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 2500 });
@@ -195,12 +203,14 @@ function establishRpcConnection() {
 
   ws.on('close', () => {
     clearInterval(pingInterval);
+    clearInterval(heartbeatInterval);
     console.log('📡 Pipeline dropped. Reconnecting...');
     setTimeout(establishRpcConnection, 4000);
   });
 
   ws.on('error', (err) => {
     clearInterval(pingInterval);
+    clearInterval(heartbeatInterval);
   });
 }
 
