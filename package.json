@@ -1,6 +1,15 @@
-"dependencies": {
+{
+  "name": "solana-volume-bot",
+  "version": "1.0.0",
+  "description": "Solana Real-Time RPC Streaming Engine",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
     "axios": "^1.6.0",
     "dotenv": "^16.3.1",
     "telegraf": "^4.15.3",
     "ws": "^8.18.0"
   }
+}
