@@ -9,9 +9,9 @@ const PORT = process.env.PORT || 10000;
 // Continuous health check server
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Solana Geyser Dev-Reputation Stream: Active\n');
+  res.end('Solana Direct Geyser Engine Live\n');
 }).listen(PORT, '0.0.0.0', () => {
-  console.log(`📡 Dev-Reputation Stream bound securely to port ${PORT}`);
+  console.log(`📡 Direct Geyser streaming server on port ${PORT}`);
 });
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
@@ -19,14 +19,14 @@ const CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.tr
 const HELIUS_KEY = process.env.HELIUS_API_KEY || '';
 
 if (!HELIUS_KEY) {
-  console.error("❌ CRITICAL ERROR: HELIUS_API_KEY is missing!");
+  console.error("❌ CRITICAL SETUP WARNING: HELIUS_API_KEY environment variable missing!");
 }
 
 async function sendSystemTest() {
   for (const chatId of CHAT_IDS) {
     if (!chatId) continue;
     try {
-      await bot.telegram.sendMessage(chatId, "🦅 <b>GEYSER RPC SCANNER + DEV AUDIT ACTIVE:</b>\n────────────────────────\n• 🌐 <b>Feed:</b> Real-Time Solana Ledger\n• 🛡️ <b>Security Profile:</b> Zero-Exception Freeze/Mint Block\n• 🕵️‍♂️ <b>Dev Filter:</b> Wallet History Check (Blocks Serial Ruggers)", { parse_mode: 'HTML' });
+      await bot.telegram.sendMessage(chatId, "🦅 <b>GEYSER DEPLOYER AUDIT ONLINE:</b>\n────────────────────────\n• 🌐 <b>Feed Source:</b> Raw Solana Ledger Stream (Zero Delay)\n• 🕵️‍♂️ <b>Dev Audit:</b> Reputation History Scanner Enabled\n• 🛡️ <b>Honeypot Filter:</b> Strict Freeze/Blacklist Block active", { parse_mode: 'HTML' });
     } catch (err) {
       console.log(`Startup alert deferred for ${chatId}:`, err.message);
     }
@@ -41,14 +41,14 @@ function establishRpcConnection() {
   const ws = new WebSocket(wsUrl);
 
   ws.on('open', () => {
-    console.log('⚡ Connected to Helius Solana RPC Ledger Stream. Injecting subscription filters...');
+    console.log('⚡ Connected directly to Helius RPC Node. Injecting Raydium block filters...');
     
     const requestPayload = {
       jsonrpc: "2.0",
       id: 1,
       method: "transactionSubscribe",
       params: [
-        { accountInclude: ["675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8"] }, // Raydium AMM Program
+        { accountInclude: ["675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8"] }, // Raydium AMM Contract
         {
           commitment: "confirmed",
           encoding: "jsonParsed",
@@ -69,49 +69,69 @@ function establishRpcConnection() {
       const txData = response.params.result;
       const logMessages = txData.transaction?.meta?.logMessages || [];
       
-      const isNewPool = logMessages.some(log => log.includes("initialize2"));
+      // Target pool initialization signatures executed inside the block
+      const isNewPool = logMessages.some(log => log.includes("initialize2") || log.includes("initialize"));
       if (!isNewPool) return;
 
-      const accountKeys = txData.transaction.transaction.message.accountKeys.map(a => a.pubkey || a);
-      if (accountKeys.length < 10) return;
+      const innerInstructions = txData.transaction?.meta?.innerInstructions || [];
+      let tokenMint = null;
+      let creatorWallet = null;
 
-      const tokenMint = accountKeys[8]; 
-      // The wallet executing this transaction initialization is the deployer/creator
-      const creatorWallet = txData.transaction.transaction.message.accountKeys.find(a => a.signer === true)?.pubkey || accountKeys[0];
+      // Extract fee payers / signers
+      const keys = txData.transaction?.transaction?.message?.accountKeys || [];
+      const signerAccount = keys.find(k => k.signer === true);
+      creatorWallet = signerAccount ? signerAccount.pubkey : (keys[0]?.pubkey || keys[0]);
 
-      if (!tokenMint || tokenMint.endsWith('11111111111111111111111111111111') || processedMints.has(tokenMint)) return;
+      if (!creatorWallet) return;
+
+      // Safely scan inner instruction arrays for token account registration mint addresses
+      for (const inner of innerInstructions) {
+        for (const inst of inner.instructions) {
+          if (inst.parsed && inst.parsed.type === 'initializeMint' && inst.parsed.info) {
+            tokenMint = inst.parsed.info.mint;
+            break;
+          }
+        }
+        if (tokenMint) break;
+      }
+
+      // Fallback extraction route from default account keys layout if inner instructions array is compressed
+      if (!tokenMint && keys.length >= 9) {
+        tokenMint = keys[8]?.pubkey || keys[8];
+      }
+
+      if (!tokenMint || typeof tokenMint !== 'string' || tokenMint.endsWith('11111111111111111111111111111111') || processedMints.has(tokenMint)) return;
       processedMints.add(tokenMint);
 
-      console.log(`🎯 New Token Pool Init: ${tokenMint} | Deployer: ${creatorWallet}`);
+      console.log(`🎯 New Token Caught on Ledger: ${tokenMint} | Deployer: ${creatorWallet}`);
 
-      // 🕵️‍♂️ STAGE 1: CREATOR WALLET REPUTATION AUDIT
+      // 🕵️‍♂️ STAGE 1: CREATOR REPUTATION MALICIOUS TRACE SCREENING
       let devIsClean = true;
       try {
-        // Query RugCheck's developer audit pipeline using the creator's wallet
-        const devCheck = await axios.get(`https://api.rugcheck.xyz/v1/address/${creatorWallet}/tokens`, { timeout: 2000 });
+        const devCheck = await axios.get(`https://api.rugcheck.xyz/v1/address/${creatorWallet}/tokens`, { timeout: 3000 });
         const pastTokens = devCheck.data;
 
         if (Array.isArray(pastTokens) && pastTokens.length > 0) {
-          // Scan history for tokens previously flagged as rugged, frozen, or abandoned scams
           const maliciousDeployments = pastTokens.filter(t => {
-            return t.status === 'rugged' || t.status === 'scam' || (t.risks && t.risks.some(r => r.name.toLowerCase().includes('freeze')));
+            const status = (t.status || '').toLowerCase();
+            return status === 'rugged' || status === 'scam' || status === 'danger';
           });
 
           if (maliciousDeployments.length > 0) {
-            console.log(`🛑 BLOCKING LAUNCH: Developer ${creatorWallet} has a history of rugging tokens.`);
+            console.log(`🛑 DROP SIGNAL: Creator ${creatorWallet} has historical rug deployments.`);
             devIsClean = false;
           }
         }
       } catch (e) {
-        // Fallback: If RugCheck's address endpoint rate limits, default to letting contract filters decide
+        // Continuous flow fallback: let hard token rules run if RugCheck's wallet tracker is offline
       }
 
       if (!devIsClean) return;
 
-      // 🛡️ STAGE 2: LIVE CONTRACT HONEYPOT PROTECTION
+      // 🛡️ STAGE 2: REAL-TIME ON-CHAIN SECURITY SCAN
       let securityPassed = false;
       try {
-        const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 2000 });
+        const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 3000 });
         const report = securityCheck.data;
 
         if (report) {
@@ -134,28 +154,27 @@ function establishRpcConnection() {
 
       if (!securityPassed) return;
 
-      // ⚔️ SUCCESS: ALERT SENDING
       const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
       const dexScreenerLink = `https://dexscreener.com/solana/${tokenMint}`;
 
       const telegramAlert = `
-⚡ <b>SECURED BLOCK-SPEED LAUNCH</b> ⚡
+⚡ <b>SECURED GEYSER RPC LAUNCH</b> ⚡
 ────────────────────────
-▶ <b>TOKEN METADATA</b>
+▶ <b>BLOCK METADATA</b>
 • <b>Contract:</b> <code>${tokenMint}</code>
 • <b>Network:</b> Solana Mainnet Ledger
 
-▶ <b>DEVELOPER AUDIT PROFILE</b>
+▶ <b>DEVELOPER REPUTATION REPORT</b>
 • <b>Creator Wallet:</b> <code>${creatorWallet}</code>
-• <b>Reputation Status:</b> Verified Clean (No Prior Rug History) 🕵️‍♂️✅
+• <b>Status:</b> No Historical Rug Profiles Detected 🕵️‍♂️✅
 
-▶ <b>RISK DIAGNOSTICS</b>
-• <b>Contract Security:</b> Passed Honeypot Scan 🛡️
-• <b>Freeze/Blacklist Authority:</b> Disabled / Revoked
+▶ <b>RISK LOCK DIAGNOSTICS</b>
+• <b>Honeypot Shield:</b> Safe Contract Configuration 🛡️
+• <b>Freeze / Mint Control:</b> Permanently Disabled
 ────────────────────────
 ▶ <b>LIGHTNING TRADE EXECUTION</b>
-• <a href="${dexScreenerLink}">DexScreener Profile</a>
-• <a href="${trojanTradeLink}">⚔️ Snag Block-Speed Entry on Trojan Bot</a>
+• <a href="${dexScreenerLink}">DexScreener Link</a>
+• <a href="${trojanTradeLink}">⚔️ Execute Direct Entry via Trojan Bot</a>
 ────────────────────────
 `;
 
@@ -173,12 +192,12 @@ function establishRpcConnection() {
   });
 
   ws.on('close', () => {
-    console.log('📡 RPC Stream Disconnected. Reconnecting...');
-    setTimeout(establishRpcConnection, 3000);
+    console.log('📡 RPC Web Socket pipeline dropped. Recovering pipeline node connection...');
+    setTimeout(establishRpcConnection, 4000);
   });
 
   ws.on('error', (err) => {
-    console.error('WebSocket Error:', err.message);
+    console.error('Node Socket Error Context:', err.message);
   });
 }
 
