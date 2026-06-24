@@ -6,49 +6,40 @@ const axios = require('axios');
 
 const PORT = process.env.PORT || 10000;
 
-// Continuous health check server
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Solana Direct Geyser Engine Live\n');
+  res.end('Solana Heartbeat RPC Engine: Active\n');
 }).listen(PORT, '0.0.0.0', () => {
-  console.log(`📡 Direct Geyser streaming server on port ${PORT}`);
+  console.log(`📡 Stream engine stabilized on port ${PORT}`);
 });
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 const CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.trim());
 const HELIUS_KEY = process.env.HELIUS_API_KEY || '';
 
-if (!HELIUS_KEY) {
-  console.error("❌ CRITICAL SETUP WARNING: HELIUS_API_KEY environment variable missing!");
-}
-
-async function sendSystemTest() {
-  for (const chatId of CHAT_IDS) {
-    if (!chatId) continue;
-    try {
-      await bot.telegram.sendMessage(chatId, "🦅 <b>GEYSER DEPLOYER AUDIT ONLINE:</b>\n────────────────────────\n• 🌐 <b>Feed Source:</b> Raw Solana Ledger Stream (Zero Delay)\n• 🕵️‍♂️ <b>Dev Audit:</b> Reputation History Scanner Enabled\n• 🛡️ <b>Honeypot Filter:</b> Strict Freeze/Blacklist Block active", { parse_mode: 'HTML' });
-    } catch (err) {
-      console.log(`Startup alert deferred for ${chatId}:`, err.message);
-    }
-  }
-}
-sendSystemTest();
-
 const processedMints = new Set();
 
 function establishRpcConnection() {
   const wsUrl = `wss://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`;
   const ws = new WebSocket(wsUrl);
+  let pingInterval;
 
   ws.on('open', () => {
     console.log('⚡ Connected directly to Helius RPC Node. Injecting Raydium block filters...');
     
+    // 🫀 HEARBEAT PROTOCOL: Keeps the pipeline open indefinitely
+    pingInterval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.ping();
+      }
+    }, 30000);
+
     const requestPayload = {
       jsonrpc: "2.0",
       id: 1,
       method: "transactionSubscribe",
       params: [
-        { accountInclude: ["675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8"] }, // Raydium AMM Contract
+        { accountInclude: ["675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8"] }, 
         {
           commitment: "confirmed",
           encoding: "jsonParsed",
@@ -69,7 +60,6 @@ function establishRpcConnection() {
       const txData = response.params.result;
       const logMessages = txData.transaction?.meta?.logMessages || [];
       
-      // Target pool initialization signatures executed inside the block
       const isNewPool = logMessages.some(log => log.includes("initialize2") || log.includes("initialize"));
       if (!isNewPool) return;
 
@@ -77,14 +67,12 @@ function establishRpcConnection() {
       let tokenMint = null;
       let creatorWallet = null;
 
-      // Extract fee payers / signers
       const keys = txData.transaction?.transaction?.message?.accountKeys || [];
       const signerAccount = keys.find(k => k.signer === true);
       creatorWallet = signerAccount ? signerAccount.pubkey : (keys[0]?.pubkey || keys[0]);
 
       if (!creatorWallet) return;
 
-      // Safely scan inner instruction arrays for token account registration mint addresses
       for (const inner of innerInstructions) {
         for (const inst of inner.instructions) {
           if (inst.parsed && inst.parsed.type === 'initializeMint' && inst.parsed.info) {
@@ -95,7 +83,6 @@ function establishRpcConnection() {
         if (tokenMint) break;
       }
 
-      // Fallback extraction route from default account keys layout if inner instructions array is compressed
       if (!tokenMint && keys.length >= 9) {
         tokenMint = keys[8]?.pubkey || keys[8];
       }
@@ -103,9 +90,9 @@ function establishRpcConnection() {
       if (!tokenMint || typeof tokenMint !== 'string' || tokenMint.endsWith('11111111111111111111111111111111') || processedMints.has(tokenMint)) return;
       processedMints.add(tokenMint);
 
-      console.log(`🎯 New Token Caught on Ledger: ${tokenMint} | Deployer: ${creatorWallet}`);
+      console.log(`🎯 Token detected on ledger: ${tokenMint}`);
 
-      // 🕵️‍♂️ STAGE 1: CREATOR REPUTATION MALICIOUS TRACE SCREENING
+      // 🕵️‍♂️ DEV WALLET HISTORY AUDIT
       let devIsClean = true;
       try {
         const devCheck = await axios.get(`https://api.rugcheck.xyz/v1/address/${creatorWallet}/tokens`, { timeout: 3000 });
@@ -118,17 +105,14 @@ function establishRpcConnection() {
           });
 
           if (maliciousDeployments.length > 0) {
-            console.log(`🛑 DROP SIGNAL: Creator ${creatorWallet} has historical rug deployments.`);
             devIsClean = false;
           }
         }
-      } catch (e) {
-        // Continuous flow fallback: let hard token rules run if RugCheck's wallet tracker is offline
-      }
+      } catch (e) {}
 
       if (!devIsClean) return;
 
-      // 🛡️ STAGE 2: REAL-TIME ON-CHAIN SECURITY SCAN
+      // 🛡️ HONEYPOT CODE RUNTIME SCAN
       let securityPassed = false;
       try {
         const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 3000 });
@@ -138,10 +122,7 @@ function establishRpcConnection() {
           const risks = report.risks || [];
           const hasHoneypotRisk = risks.some(risk => {
             const riskName = (risk.name || '').toLowerCase();
-            return riskName.includes('mint') || 
-                   riskName.includes('freeze') || 
-                   riskName.includes('blacklist') || 
-                   riskName.includes('mutable');
+            return riskName.includes('mint') || riskName.includes('freeze') || riskName.includes('blacklist') || riskName.includes('mutable');
           });
 
           if (!hasHoneypotRisk) {
@@ -192,12 +173,13 @@ function establishRpcConnection() {
   });
 
   ws.on('close', () => {
-    console.log('📡 RPC Web Socket pipeline dropped. Recovering pipeline node connection...');
+    clearInterval(pingInterval);
+    console.log('📡 Pipeline dropped. Reconnecting...');
     setTimeout(establishRpcConnection, 4000);
   });
 
   ws.on('error', (err) => {
-    console.error('Node Socket Error Context:', err.message);
+    clearInterval(pingInterval);
   });
 }
 
