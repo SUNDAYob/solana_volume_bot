@@ -5,13 +5,26 @@ const WebSocket = require('ws');
 const axios = require('axios');
 
 const PORT = process.env.PORT || 10000;
+// 🚨 CRITICAL: Use your actual Render URL here to prevent sleeping
+const RENDER_URL = "https://solana-volume-bot-pvtx.onrender.com"; 
 
+// Create the web endpoint Render requires
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Solana Smart Migration Stream: Active\n');
+  res.end('Solana Immortal Stream: Online\n');
 }).listen(PORT, '0.0.0.0', () => {
-  console.log(`📡 Smart Migration pipeline deployed on port ${PORT}`);
+  console.log(`📡 Stream engine initialized on port ${PORT}`);
 });
+
+// 🔄 ANTI-SLEEP CHRONO: Pings itself every 5 minutes to stay awake forever
+setInterval(async () => {
+  try {
+    await axios.get(RENDER_URL);
+    console.log('⏰ Anti-Sleep Self-Ping: Stay Awake Pulse Sent Executed.');
+  } catch (err) {
+    console.log('⏰ Anti-Sleep Pulse acknowledged.');
+  }
+}, 300000); // 5 minutes in milliseconds
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 const CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.trim());
@@ -25,8 +38,9 @@ function establishRpcConnection() {
   let pingInterval;
 
   ws.on('open', () => {
-    console.log('⚡ Connected to Helius Solana Node. Tuning filters for high-quality migrations...');
+    console.log('⚡ Connected to Helius Solana Node. Tracking high-quality migrations...');
     
+    // Heartbeat to make sure Helius doesn't drop us
     pingInterval = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) ws.ping();
     }, 30000);
@@ -39,7 +53,7 @@ function establishRpcConnection() {
         {
           accountInclude: [
             "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", // Raydium AMM
-            "39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg"  // Pump.fun Migration Account
+            "39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg"  // Pump.fun Migration
           ]
         }, 
         {
@@ -94,10 +108,9 @@ function establishRpcConnection() {
 
       const isPumpMigration = logMessages.some(log => log.toLowerCase().includes('pump'));
 
-      // ⏳ OBSERVATION PROTOCOL FOR PUMP MIGRATIONS
       if (isPumpMigration) {
         console.log(`⏱️ Pump.fun Migration Detected: ${tokenMint}. Analyzing pool stability...`);
-        await new Promise(resolve => setTimeout(resolve, 45000)); // Wait 45 seconds to check trajectory
+        await new Promise(resolve => setTimeout(resolve, 45000)); 
       }
 
       // 🕵️‍♂️ STAGE 1: DEV BACKGROUND HISTORY SCAN
@@ -152,16 +165,14 @@ function establishRpcConnection() {
           
           if (pair) {
             const liquidity = pair.liquidity?.usd || 0;
-            const volume5m = pair.volume?.m5 || 0; // Fixes variable formatting layout typo
+            const volume5m = pair.volume?.m5 || 0;
             
             if (liquidity < 8000 || volume5m < 2000) {
               console.log(`📉 REJECTED: Migration failed stability audit (Low liquid/vol).`);
               return;
             }
           }
-        } catch (dexErr) {
-          // Fallback pass if data systems take an extra second to compile
-        }
+        } catch (dexErr) {}
       }
 
       const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
