@@ -6,12 +6,11 @@ const axios = require('axios');
 
 const PORT = process.env.PORT || 10000;
 
-// Create standard web hook server 
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Solana Moderate Stream Engine v2: Active\n');
+  res.end('Solana Guard Engine: Active\n');
 }).listen(PORT, '0.0.0.0', () => {
-  console.log(`📡 [ENGINE LIVE] Listening on port ${PORT}`);
+  console.log(`📡 [ENGINE LIVE] Active on port ${PORT}`);
 });
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
@@ -24,10 +23,10 @@ async function sendBootAlert() {
   for (const chatId of CHAT_IDS) {
     if (!chatId) continue;
     try {
-      await bot.telegram.sendMessage(chatId, "⚡ <b>FAST STREAM ENGINE ACTIVE</b>\n────────────────────────\n• 🪐 <b>Mode:</b> Moderate Speed (Option 2)\n• 🛰️ <b>Network:</b> Helius Mainnet WebSocket Connected", { parse_mode: 'HTML' });
-      console.log(`[BOOT] Alert pushed to chat: ${chatId}`);
+      await bot.telegram.sendMessage(chatId, "⚡ <b>FAST STREAM ENGINE ACTIVE</b>\n────────────────────────\n• 🪐 <b>Mode:</b> Option 2 Connected\n• 🛰️ <b>Network:</b> Guard Online", { parse_mode: 'HTML' });
+      console.log(`[BOOT SUCCESS] Sent notification to chat target: ${chatId}`);
     } catch (err) {
-      console.log(`[BOOT ERROR] Chat ${chatId}: ${err.message}`);
+      console.log(`[BOOT ERROR] Target ${chatId} rejected payload: ${err.message}. Ensure ID is numeric and bot is admin!`);
     }
   }
 }
@@ -39,7 +38,7 @@ function establishRpcConnection() {
   let pingInterval;
 
   ws.on('open', () => {
-    console.log('⚡ Connected to Helius Solana Node. Running instant scanning rules...');
+    console.log('⚡ Connected to Helius Solana Node. Stream actively parsing blocks...');
     
     pingInterval = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) ws.ping();
@@ -52,8 +51,8 @@ function establishRpcConnection() {
       params: [
         {
           accountInclude: [
-            "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", // Raydium AMM
-            "39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg"  // Pump.fun Migration Account
+            "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", 
+            "39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg"  
           ]
         }, 
         {
@@ -106,7 +105,7 @@ function establishRpcConnection() {
       processedMints.add(tokenMint);
 
       const isPumpMigration = logMessages.some(log => log.toLowerCase().includes('pump'));
-      console.log(`🔎 [NEW PAIR DETECTED] Token: ${tokenMint}`);
+      console.log(`🔎 [SCANNING] Found Pair: ${tokenMint}`);
 
       // 🕵️‍♂️ STAGE 1: DEV BACKGROUND HISTORY SCAN
       let devIsClean = true;
@@ -121,12 +120,12 @@ function establishRpcConnection() {
           });
 
           if (maliciousDeployments.length > 0) {
-            console.log(`🛑 DROP: Dev ${creatorWallet} flagged with malicious history.`);
+            console.log(`🛑 DROP: Dev wallet history risk found for ${creatorWallet}`);
             devIsClean = false;
           }
         }
       } catch (e) {
-        console.log("⚠️ Dev history lookup timed out. Defaulting to safe passage.");
+        console.log("⚠️ Dev scan timeout. Defaulting to pass.");
       }
 
       if (!devIsClean) return;
@@ -144,17 +143,17 @@ function establishRpcConnection() {
           });
 
           if (hasHoneypotRisk) {
-            console.log(`🛑 DROP: Toxic variables found inside token contract parameters.`);
+            console.log(`🛑 DROP: Dangerous contract properties on ${tokenMint}`);
             securityPassed = false;
           }
         }
       } catch (err) {
-        console.log("⚠️ Contract risk check timed out. Defaulting to safe passage.");
+        console.log("⚠️ RugCheck report timeout. Passing to feed.");
       }
 
       if (!securityPassed) return;
 
-      console.log(`📬 [SUCCESS] Forwarding token verified alert to Telegram: ${tokenMint}`);
+      console.log(`📬 [MATCH] Forwarding token metrics to Telegram: ${tokenMint}`);
 
       const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
       const dexScreenerLink = `https://dexscreener.com/solana/${tokenMint}`;
@@ -185,12 +184,12 @@ function establishRpcConnection() {
             disable_web_page_preview: true 
           });
         } catch (postErr) {
-          console.log(`❌ Telegram dispatch failure:`, postErr.message);
+          console.log(`❌ Notification failed for target [${chatId}]: ${postErr.message}`);
         }
       }
 
     } catch (parseError) {
-      console.log("Main loop parse failure context:", parseError.message);
+      console.log("Main core loop execution alert:", parseError.message);
     }
   });
 
