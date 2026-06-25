@@ -10,6 +10,9 @@ const CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.tr
 // Anti-spam deduplication cache
 const recentMints = new Set();
 
+// Helper function to pause execution for retries
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -62,30 +65,53 @@ const server = http.createServer((req, res) => {
             continue;
           }
           recentMints.add(tokenMint);
-          // Automatically clear the mint from the memory cache after 45 seconds
           setTimeout(() => recentMints.delete(tokenMint), 45000);
 
           console.log(`🎯 [STREAM MATCH] Target Mint Identified: ${tokenMint}`);
 
-          let securityStatusText = "Clean Pass ✅";
-          try {
-            const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 1500 });
-            const report = securityCheck.data;
+          // 🛡️ RUGCHECK SMART RETRY ENGINE
+          let securityStatusText = "Scan Bypassed (Not Indexed) ⏱️";
+          let maxRetries = 3;
+          let delayBetweenRetries = 3000; // 3 seconds
+          let isHoneypot = false;
 
-            if (report && report.risks) {
-              const isHoneypot = report.risks.some(risk => {
-                const name = (risk.name || '').toLowerCase();
-                return name.includes('mint') || name.includes('freeze') || name.includes('honeypot');
-              });
+          for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+              console.log(`🔍 Checking RugCheck for ${tokenMint} (Attempt ${attempt}/${maxRetries})...`);
+              const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 2000 });
+              const report = securityCheck.data;
 
-              if (isHoneypot) {
-                console.log(`🛑 Shield Filter dropped malicious asset: ${tokenMint}`);
-                continue; 
+              if (report) {
+                if (report.risks) {
+                  isHoneypot = report.risks.some(risk => {
+                    const name = (risk.name || '').toLowerCase();
+                    return name.includes('mint') || name.includes('freeze') || name.includes('honeypot');
+                  });
+
+                  if (report.score > 4000) {
+                    securityStatusText = `⚠️ High Risk (${report.score})`;
+                  } else {
+                    securityStatusText = `Clean Pass ✅ (${report.score || 0} pts)`;
+                  }
+                } else {
+                  securityStatusText = "Clean Pass ✅ (0 pts)";
+                }
+                break; // Report fetched successfully! Break out of the retry loop.
               }
-              if (report.score > 4000) securityStatusText = `⚠️ High Risk (${report.score})`;
+            } catch (error) {
+              if (attempt < maxRetries) {
+                console.log(`⏱️ Token not indexed yet on attempt ${attempt}. Waiting ${delayBetweenRetries / 1000}s...`);
+                await sleep(delayBetweenRetries);
+              } else {
+                console.log(`❌ Max retries reached for ${tokenMint}. Proceeding with fallback status.`);
+              }
             }
-          } catch {
-            securityStatusText = "Scan Bypassed (Traffic Peak) ⏱️";
+          }
+
+          // If the verified retry scan flags a honeypot, drop it cleanly
+          if (isHoneypot) {
+            console.log(`🛑 Shield Filter dropped malicious asset: ${tokenMint}`);
+            continue; 
           }
 
           const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
@@ -130,5 +156,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 [ENGINE ONLINE] Anti-Spam Webhook Core active on port ${PORT}`);
+  console.log(`🚀 [ENGINE ONLINE] Optimized Webhook Core active on port ${PORT}`);
 });
