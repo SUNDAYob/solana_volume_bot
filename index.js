@@ -66,6 +66,10 @@ app.post('/helius-stream', async (req, res) => {
           let marketData = null;
           let report = null;
 
+          // ⏳ Give Solana Tracker 30 seconds to index the newly created token pair
+          console.log(`⏳ Waiting 30s for indexing on ${tokenMint.substring(0,6)}...`);
+          await delay(30000); 
+
           // --- STEP 1: SOLANA TRACKER API RETRY TUNNEL ---
           for (let attempt = 1; attempt <= 3; attempt++) {
             try {
@@ -85,7 +89,7 @@ app.post('/helius-stream', async (req, res) => {
               }
             } catch (e) {
               console.log(`⚠️ Tracker Token API Attempt ${attempt} failed for ${tokenMint.substring(0,6)}: ${e.message}`);
-              if (attempt < 3) await delay(8000);
+              if (attempt < 3) await delay(8000); // Wait 8 seconds before retrying
             }
           }
 
