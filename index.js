@@ -7,20 +7,20 @@ const PORT = process.env.PORT || 10000;
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 const CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.trim());
 
+// Anti-spam deduplication cache
+const recentMints = new Set();
+
 const server = http.createServer((req, res) => {
-  // 1. Health Ping
   if (req.method === 'GET' && req.url === '/') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    return res.end('Solana Dynamic Core Native: Operational\n');
+    return res.end('Solana Anti-Spam Core Native: Operational\n');
   }
 
-  // 2. High-Catch Webhook Endpoint
   if (req.method === 'POST' && req.url === '/helius-stream') {
     let chunks = [];
 
     req.on('data', chunk => { chunks.push(chunk); });
     req.on('end', async () => {
-      // Release Helius thread immediately
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       res.end('OK');
 
@@ -35,16 +35,13 @@ const server = http.createServer((req, res) => {
         for (const tx of transactions) {
           let tokenMint = null;
           
-          // Strategy A: Check Token Arrays
           const tokenTransfers = tx.tokenTransfers || [];
           if (tokenTransfers.length > 0 && tokenTransfers[0].tokenMint) {
             tokenMint = tokenTransfers[0].tokenMint;
           }
 
-          // Strategy B: Deep System Instruction Scan Fallback
           if (!tokenMint && tx.instructions) {
             for (const inst of tx.instructions) {
-              // Check outer accounts
               if (inst.accounts && inst.accounts.length > 2) {
                 const structuralMint = inst.accounts.find(acc => 
                   acc !== '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8' && 
@@ -57,8 +54,16 @@ const server = http.createServer((req, res) => {
             }
           }
 
-          // Safety Gate
           if (!tokenMint || tokenMint.includes('11111111111111111111111111111111')) continue;
+
+          // 🛡️ TELEGRAM ANTI-SPAM GUARD
+          if (recentMints.has(tokenMint)) {
+            console.log(`♻️ [DEDUPLICATED] Skipped duplicate webhook record for: ${tokenMint}`);
+            continue;
+          }
+          recentMints.add(tokenMint);
+          // Automatically clear the mint from the memory cache after 45 seconds
+          setTimeout(() => recentMints.delete(tokenMint), 45000);
 
           console.log(`🎯 [STREAM MATCH] Target Mint Identified: ${tokenMint}`);
 
@@ -125,5 +130,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 [ENGINE ONLINE] Multi-Strategy Webhook Core active on port ${PORT}`);
+  console.log(`🚀 [ENGINE ONLINE] Anti-Spam Webhook Core active on port ${PORT}`);
 });
