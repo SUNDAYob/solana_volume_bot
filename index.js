@@ -7,71 +7,80 @@ const PORT = process.env.PORT || 10000;
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 const CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.trim());
 
-// Create native web server without express
 const server = http.createServer((req, res) => {
-  // 1. Health check route for Render/UptimeRobot
+  // 1. Health Ping
   if (req.method === 'GET' && req.url === '/') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    return res.end('Solana Server Core: Stable Native Protocol Live.');
+    return res.end('Solana Dynamic Core Native: Operational\n');
   }
 
-  // 2. Core Webhook Endpoint
+  // 2. High-Catch Webhook Endpoint
   if (req.method === 'POST' && req.url === '/helius-stream') {
-    let body = '';
+    let chunks = [];
 
-    // Collect JSON data streams
-    req.on('data', chunk => { body += chunk.toString(); });
+    req.on('data', chunk => { chunks.push(chunk); });
     req.on('end', async () => {
-      // Send 200 OK back to Helius immediately
+      // Release Helius thread immediately
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       res.end('OK');
 
       try {
-        if (!body) return;
-        const transactions = JSON.parse(body);
-        if (!Array.isArray(transactions) || transactions.length === 0) return;
+        const buffer = Buffer.concat(chunks);
+        const rawBody = buffer.toString('utf8');
+        if (!rawBody) return;
+
+        const transactions = JSON.parse(rawBody);
+        if (!Array.isArray(transactions)) return;
 
         for (const tx of transactions) {
-          const tokenTransfers = tx.tokenTransfers || [];
-          const instructions = tx.instructions || [];
           let tokenMint = null;
-
-          if (tokenTransfers.length > 0) {
+          
+          // Strategy A: Check Token Arrays
+          const tokenTransfers = tx.tokenTransfers || [];
+          if (tokenTransfers.length > 0 && tokenTransfers[0].tokenMint) {
             tokenMint = tokenTransfers[0].tokenMint;
-          } else {
-            const mintInstruction = instructions.find(inst => 
-              inst.innerInstructions && 
-              inst.innerInstructions.some(inner => inner.parsed?.type === 'initializeMint')
-            );
-            if (mintInstruction) {
-              const inner = mintInstruction.innerInstructions.find(i => i.parsed?.type === 'initializeMint');
-              tokenMint = inner.parsed?.info?.mint;
+          }
+
+          // Strategy B: Deep System Instruction Scan Fallback
+          if (!tokenMint && tx.instructions) {
+            for (const inst of tx.instructions) {
+              // Check outer accounts
+              if (inst.accounts && inst.accounts.length > 2) {
+                const structuralMint = inst.accounts.find(acc => 
+                  acc !== '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8' && 
+                  acc !== 'So11111111111111111111111111111111111111112' &&
+                  acc !== 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' &&
+                  acc.length >= 32 && !acc.startsWith('Sysvar')
+                );
+                if (structuralMint) { tokenMint = structuralMint; break; }
+              }
             }
           }
 
-          if (!tokenMint || tokenMint.endsWith('11111111111111111111111111111111')) continue;
+          // Safety Gate
+          if (!tokenMint || tokenMint.includes('11111111111111111111111111111111')) continue;
 
-          console.log(`📬 [WEBHOOK RECOVERY] Parsed Token Address: ${tokenMint}`);
+          console.log(`🎯 [STREAM MATCH] Target Mint Identified: ${tokenMint}`);
 
           let securityStatusText = "Clean Pass ✅";
           try {
-            const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 1800 });
+            const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 1500 });
             const report = securityCheck.data;
 
             if (report && report.risks) {
               const isHoneypot = report.risks.some(risk => {
-                const riskName = (risk.name || '').toLowerCase();
-                return riskName.includes('mint') || riskName.includes('freeze') || riskName.includes('honeypot');
+                const name = (risk.name || '').toLowerCase();
+                return name.includes('mint') || name.includes('freeze') || name.includes('honeypot');
               });
 
               if (isHoneypot) {
-                console.log(`🛑 Blocked dangerous asset properties: ${tokenMint}`);
+                console.log(`🛑 Shield Filter dropped malicious asset: ${tokenMint}`);
                 continue; 
               }
               if (report.score > 4000) securityStatusText = `⚠️ High Risk (${report.score})`;
             }
           } catch {
-            securityStatusText = "Scan Bypassed (Traffic High) ⏱️";
+            securityStatusText = "Scan Bypassed (Traffic Peak) ⏱️";
           }
 
           const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
@@ -101,21 +110,20 @@ const server = http.createServer((req, res) => {
                 disable_web_page_preview: true 
               });
             } catch (err) {
-              console.log(`Telegram Send Alert Error: ${err.message}`);
+              console.log(`Telegram Dispatch Failure: ${err.message}`);
             }
           }
         }
       } catch (parseError) {
-        console.log(`Internal Webhook Processing Bypass: ${parseError.message}`);
+        // Step over structural discrepancies cleanly
       }
     });
-  } else {
-    // Catch-all for any other routes
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('Not Found');
+  } else if (req.url !== '/') {
+    res.writeHead(404);
+    res.end();
   }
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 [SERVER LIVE] Listening for Webhook signals on port ${PORT}`);
+  console.log(`🚀 [ENGINE ONLINE] Multi-Strategy Webhook Core active on port ${PORT}`);
 });
