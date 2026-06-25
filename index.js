@@ -7,21 +7,16 @@ const PORT = process.env.PORT || 10000;
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 const CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.trim());
 
-// Anti-spam deduplication cache
 const recentMints = new Set();
-
-// Helper function to pause execution for retries
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    return res.end('Solana Anti-Spam Core Native: Operational\n');
+    return res.end('Solana Complete Alpha Filtration Core\n');
   }
 
   if (req.method === 'POST' && req.url === '/helius-stream') {
     let chunks = [];
-
     req.on('data', chunk => { chunks.push(chunk); });
     req.on('end', async () => {
       res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -37,95 +32,104 @@ const server = http.createServer((req, res) => {
 
         for (const tx of transactions) {
           let tokenMint = null;
-          
           const tokenTransfers = tx.tokenTransfers || [];
           if (tokenTransfers.length > 0 && tokenTransfers[0].tokenMint) {
             tokenMint = tokenTransfers[0].tokenMint;
           }
 
-          if (!tokenMint && tx.instructions) {
-            for (const inst of tx.instructions) {
-              if (inst.accounts && inst.accounts.length > 2) {
-                const structuralMint = inst.accounts.find(acc => 
-                  acc !== '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8' && 
-                  acc !== 'So11111111111111111111111111111111111111112' &&
-                  acc !== 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' &&
-                  acc.length >= 32 && !acc.startsWith('Sysvar')
-                );
-                if (structuralMint) { tokenMint = structuralMint; break; }
-              }
-            }
-          }
-
           if (!tokenMint || tokenMint.includes('11111111111111111111111111111111')) continue;
 
-          // 🛡️ TELEGRAM ANTI-SPAM GUARD
-          if (recentMints.has(tokenMint)) {
-            console.log(`♻️ [DEDUPLICATED] Skipped duplicate webhook record for: ${tokenMint}`);
-            continue;
-          }
+          // 1. Anti-Spam Gate
+          if (recentMints.has(tokenMint)) continue;
           recentMints.add(tokenMint);
-          setTimeout(() => recentMints.delete(tokenMint), 45000);
+          setTimeout(() => recentMints.delete(tokenMint), 60000);
 
-          console.log(`🎯 [STREAM MATCH] Target Mint Identified: ${tokenMint}`);
-
-          // 🛡️ RUGCHECK SMART RETRY ENGINE
-          let securityStatusText = "Scan Bypassed (Not Indexed) ⏱️";
-          let maxRetries = 3;
-          let delayBetweenRetries = 3000; // 3 seconds
-          let isHoneypot = false;
-
-          for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          // Execute matching on a 15-second delay to allow aggregate metrics to compile
+          setTimeout(async () => {
             try {
-              console.log(`🔍 Checking RugCheck for ${tokenMint} (Attempt ${attempt}/${maxRetries})...`);
-              const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 2000 });
-              const report = securityCheck.data;
+              // --------------------------------------------------------
+              // REQUIREMENT 1: RugCheck Security, LP Lock & Mint Authority
+              // --------------------------------------------------------
+              const rcConfig = process.env.RUGCHECK_JWT ? {
+                headers: { 'Authorization': `Bearer ${process.env.RUGCHECK_JWT}` }
+              } : {};
+              
+              const rcRes = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, rcConfig);
+              const report = rcRes.data;
+              
+              if (!report) return;
 
-              if (report) {
-                if (report.risks) {
-                  isHoneypot = report.risks.some(risk => {
-                    const name = (risk.name || '').toLowerCase();
-                    return name.includes('mint') || name.includes('freeze') || name.includes('honeypot');
-                  });
+              // Validate Liquidity Lock status
+              const hasLockedLiquidity = report.markets?.some(m => m.lpLocked === true || m.lpPercent === 100);
+              
+              // Validate Honeypot Risks
+              const isHoneypot = report.risks?.some(r => r.name?.toLowerCase().includes('freeze') || r.name?.toLowerCase().includes('honeypot'));
 
-                  if (report.score > 4000) {
-                    securityStatusText = `⚠️ High Risk (${report.score})`;
-                  } else {
-                    securityStatusText = `Clean Pass ✅ (${report.score || 0} pts)`;
-                  }
-                } else {
-                  securityStatusText = "Clean Pass ✅ (0 pts)";
-                }
-                break; // Report fetched successfully! Break out of the retry loop.
+              // Validate Mint Authority (Strictly block if dev can still mint coins)
+              // RugCheck details the mint authority state in token meta properties or risk naming conventions
+              const canMintMore = report.risks?.some(r => r.name?.toLowerCase().includes('mint authority') || r.name?.toLowerCase().includes('mintable'));
+
+              if (isHoneypot || !hasLockedLiquidity || canMintMore) {
+                console.log(`🛑 [FILTERED] Failed Safety Criteria (Honeypot: ${isHoneypot}, Locked LP: ${hasLockedLiquidity}, Mintable: ${canMintMore}) for ${tokenMint}`);
+                return; // Silently drop unsafe tokens
               }
-            } catch (error) {
-              if (attempt < maxRetries) {
-                console.log(`⏱️ Token not indexed yet on attempt ${attempt}. Waiting ${delayBetweenRetries / 1000}s...`);
-                await sleep(delayBetweenRetries);
-              } else {
-                console.log(`❌ Max retries reached for ${tokenMint}. Proceeding with fallback status.`);
+
+              // --------------------------------------------------------
+              // REQUIREMENT 2, 3 & 4: Wallet Profiling, Volume, & Whales
+              // --------------------------------------------------------
+              const trackerRes = await axios.get(`https://api.solanatracker.io/tokens/${tokenMint}`, {
+                headers: { 'x-api-key': process.env.SOLANA_TRACKER_API_KEY }
+              });
+              const marketData = trackerRes.data;
+
+              if (!marketData) return;
+
+              const devAddress = marketData.creator;
+              const volume24h = marketData.pools?.[0]?.volume?.h24 || 0;
+              const whaleCount = marketData.events?.whales?.length || 0;
+
+              // Check Dev Wallet Reputation History
+              const devHistory = await axios.get(`https://api.solanatracker.io/wallets/${devAddress}/history`, {
+                headers: { 'x-api-key': process.env.SOLANA_TRACKER_API_KEY }
+              });
+              
+              const totalPreviousLaunches = devHistory.data?.summary?.totalTokensTraded || 0;
+              const avgHoldTime = devHistory.data?.summary?.avgHoldTimeSecs || 999;
+
+              // If dev has launched historical tokens and instantly dumped them within 60s, flag as malicious
+              if (avgHoldTime < 60 && totalPreviousLaunches > 3) {
+                console.log(`🛑 [FILTERED] Dev profile marked as malicious launcher: ${devAddress}`);
+                return;
               }
-            }
-          }
 
-          // If the verified retry scan flags a honeypot, drop it cleanly
-          if (isHoneypot) {
-            console.log(`🛑 Shield Filter dropped malicious asset: ${tokenMint}`);
-            continue; 
-          }
+              // Establish parameters for active trade volume velocity (e.g., minimum $5,000 to register momentum)
+              if (volume24h < 5000) { 
+                console.log(`🛑 [FILTERED] Insufficient early trading volume: $${volume24h}`);
+                return; 
+              }
 
-          const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
-          const dexScreenerLink = `https://dexscreener.com/solana/${tokenMint}`;
+              // --------------------------------------------------------
+              // PIPELINE PASSED: Dispatch High-Conviction Alert
+              // --------------------------------------------------------
+              const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
+              const dexScreenerLink = `https://dexscreener.com/solana/${tokenMint}`;
 
-          const telegramAlert = `
-🔥 <b>NEW LIVE POOL DETECTED</b> 🔥
+              const telegramAlert = `
+💎 <b>HIGH CONVICTION POOL MATCHED</b> 💎
 ────────────────────────
 ▶ <b>BLOCK METADATA</b>
 • <b>Token Contract:</b> <code>${tokenMint}</code>
-• <b>Router Target:</b> Raydium AMM V4 🪐
+• <b>Dev Wallet:</b> <code>${devAddress}</code>
 ────────────────────────
-▶ <b>🛡️ AUTOMATED SECURITY SCAN</b>
-• <b>Status Result:</b> <b>${securityStatusText}</b>
+▶ <b>🛡️ AUDIT STATUS (PASSED)</b>
+• <b>Liquidity Pool:</b> Locked 🔒
+• <b>Mint Status:</b> Renounced (No More Minting) 🚫🖨️
+• <b>Honeypot Rules:</b> Clean Pass ✅
+• <b>Dev Reputation:</b> Safe History 👍 (${totalPreviousLaunches} setups found)
+────────────────────────
+▶ <b>📊 MARKET VELOCITY METRICS</b>
+• <b>Current Volume Run:</b> $${Number(volume24h).toLocaleString()}
+• <b>Active Whale Wallets:</b> ${whaleCount} tracked
 ────────────────────────
 ▶ <b>LIGHTNING TRADE EXECUTION</b>
 • <a href="${dexScreenerLink}">DexScreener Market Chart</a>
@@ -133,28 +137,24 @@ const server = http.createServer((req, res) => {
 ────────────────────────
 `;
 
-          for (const chatId of CHAT_IDS) {
-            if (!chatId) continue;
-            try {
-              await bot.telegram.sendMessage(chatId, telegramAlert, { 
-                parse_mode: 'HTML',
-                disable_web_page_preview: true 
-              });
+              for (const chatId of CHAT_IDS) {
+                if (!chatId) continue;
+                await bot.telegram.sendMessage(chatId, telegramAlert, { 
+                  parse_mode: 'HTML',
+                  disable_web_page_preview: true 
+                });
+              }
+
             } catch (err) {
-              console.log(`Telegram Dispatch Failure: ${err.message}`);
+              console.log(`Scan Processing Interrupted: ${err.message}`);
             }
-          }
+          }, 15000); 
         }
-      } catch (parseError) {
-        // Step over structural discrepancies cleanly
-      }
+      } catch (parseError) {}
     });
-  } else if (req.url !== '/') {
-    res.writeHead(404);
-    res.end();
   }
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 [ENGINE ONLINE] Optimized Webhook Core active on port ${PORT}`);
+  console.log(`🚀 Automated Alpha Core Active on Port ${PORT}`);
 });
