@@ -16,7 +16,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.get('/', (req, res) => {
-  res.status(200).send('Solana Tracker Pre-Pump Engine V9: Online\n');
+  res.status(200).send('Solana Pre-Pump Sniper V10: Active\n');
 });
 
 app.post('/helius-stream', async (req, res) => {
@@ -53,18 +53,18 @@ app.post('/helius-stream', async (req, res) => {
 
       if (recentMints.has(tokenMint)) continue;
       recentMints.add(tokenMint);
-      setTimeout(() => recentMints.delete(tokenMint), 120000); // 2 min deduplication
+      setTimeout(() => recentMints.delete(tokenMint), 120000);
 
-      // Background worker to monitor volume buildup
+      console.log(`🔍 [INGESTED] Evaluating block entry for token: ${tokenMint.substring(0, 6)}...`);
+
       (async () => {
         try {
-          // ⏳ Give the pool 45 seconds to establish initial buying momentum
-          await delay(45000);
+          // Wait 35 seconds (slightly faster to catch the pump early)
+          await delay(35000);
 
           let marketData = null;
           let report = null;
 
-          // --- STEP 1: SOLANA TRACKER BREAKOUT VERIFICATION ---
           if (!process.env.SOLANA_TRACKER_API_KEY) return;
           
           try {
@@ -76,26 +76,30 @@ app.post('/helius-stream', async (req, res) => {
               marketData = trackerRes.data;
             }
           } catch (e) {
-            return; // Silently filter out unindexed assets
+            console.log(`   ↳ ❌ Unindexed on Tracker yet: ${tokenMint.substring(0, 6)}`);
+            return; 
           }
 
           if (!marketData) return;
 
           const volume24h = marketData.pools?.[0]?.volume?.h24 || 0;
           const liquidityUsd = marketData.pools?.[0]?.liquidity?.usd || 0;
-          const whaleCount = marketData.events?.whales?.length || 0;
 
-          // 🎯 PRE-PUMP TARGET RANGE FILTERS
-          // Must have at least $500 to show signs of life, but less than $3,500 so you get in early!
-          if (Number(volume24h) < 500 || Number(volume24h) > 3500) return;
+          // 🚨 PRE-PUMP TARGET RANGE: $300 to $5,000 volume
+          if (Number(volume24h) < 300) {
+            console.log(`   ↳ 💤 Volume too low ($${Math.round(volume24h)}): ${tokenMint.substring(0, 6)}`);
+            return;
+          }
+          if (Number(volume24h) > 5000) {
+            console.log(`   ↳ 📈 Already pumped past target ($${Math.round(volume24h)}): ${tokenMint.substring(0, 6)}`);
+            return;
+          }
+          if (Number(liquidityUsd) < 1000) {
+            console.log(`   ↳ 📉 Dangerous low liquidity ($${Math.round(liquidityUsd)}): ${tokenMint.substring(0, 6)}`);
+            return;
+          }
 
-          // Ensure it has stable initial liquidity backing
-          if (Number(liquidityUsd) < 1500) return;
-
-          // Ensure smart money or early snipers are backing the trades
-          if (whaleCount < 1) return;
-
-          // --- STEP 2: RUGCHECK HIGH-SPEED AUDIT ---
+          // --- HIGH SPEED RUGCHECK SCAN ---
           try {
             const rcConfig = process.env.RUGCHECK_JWT ? {
               headers: { 'Authorization': `Bearer ${process.env.RUGCHECK_JWT}` },
@@ -105,7 +109,7 @@ app.post('/helius-stream', async (req, res) => {
             const rcRes = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, rcConfig);
             if (rcRes.data) report = rcRes.data;
           } catch (rcErr) {
-            return; // Drop if security audit can't verify safety
+            return;
           }
 
           if (!report) return;
@@ -113,31 +117,34 @@ app.post('/helius-stream', async (req, res) => {
           const hasLockedLiquidity = report.markets?.some(m => m.lpLocked === true || m.lpPercent === 100) || false;
           const canMintMore = report.risks?.some(r => r.name?.toLowerCase().includes('mint authority') || r.name?.toLowerCase().includes('mintable')) || false;
           
-          if (canMintMore) return; // Drop unsafe honeypots instantly
+          if (canMintMore) {
+            console.log(`   ↳ 🛑 Honeypot Warning (Mintable): ${tokenMint.substring(0, 6)}`);
+            return;
+          }
+
+          console.log(`🚀 [🔥 PRE-PUMP MATCH] Sending Token to Telegram: ${tokenMint.substring(0, 6)}`);
 
           const devAddress = marketData.creator || "Unknown";
           const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
           const dexScreenerLink = `https://dexscreener.com/solana/${tokenMint}`;
 
-          // --- STEP 3: DISPATCH ROCKET EMBED SIGNALS ---
           const telegramAlert = `
-🚨 <b>EARLY MOMENTUM SIGNAL</b> 🚨
+🚨 <b>PRE-PUMP BREAKOUT SIGNAL</b> 🚨
 ────────────────────────
-▶ <b>TOKEN ID</b>
+▶ <b>TOKEN METADATA</b>
 • <b>Mint Contract:</b> <code>${tokenMint}</code>
 ────────────────────────
-▶ <b>📈 BREAKOUT METRICS (SUB-3K VOLUME)</b>
+▶ <b>📈 EARLY VOLOCITY DETECTED</b>
 • <b>Current Entry Volume:</b> <code>$${Number(volume24h).toLocaleString()}</code> 🚀
-• <b>Initial Pool Liquidity:</b> <code>$${Number(liquidityUsd).toLocaleString()}</code>
-• <b>Early Whales Injected:</b> <b>${whaleCount} Tracked</b> 🔥
+• <b>Pool Liquidity Available:</b> <code>$${Number(liquidityUsd).toLocaleString()}</code>
 ────────────────────────
-▶ <b>🛡️ SAFETY PARAMETERS</b>
-• <b>LP Status:</b> ${hasLockedLiquidity ? 'Locked 🔒' : 'Active Setup 📊'}
-• <b>Mint Authority:</b> Renounced 🚫
+▶ <b>🛡️ SAFETY SCREENING</b>
+• <b>LP Status:</b> ${hasLockedLiquidity ? 'Locked 🔒' : 'Active Initial Pool 📊'}
+• <b>Mint Status:</b> Renounced (Safe) 🚫
 ────────────────────────
-▶ <b>⚔️ SPEED ENTRY LINKS</b>
-• <a href="${dexScreenerLink}">DexScreener Live Entry Chart</a>
-• <a href="${trojanTradeLink}">⚔️ Snag Entry via Trojan Sniper Bot</a>
+▶ <b>⚔️ HIGH-SPEED ENTRY LINKS</b>
+• <a href="${dexScreenerLink}">DexScreener Entry Chart</a>
+• <a href="${trojanTradeLink}">⚔️ Buy via Trojan Sniper Bot</a>
 ────────────────────────
 `;
 
@@ -156,10 +163,6 @@ app.post('/helius-stream', async (req, res) => {
   } catch (error) {}
 });
 
-app.use((err, req, res, next) => {
-  res.status(500).send('Engine Fault Handler');
-});
-
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Pre-Pump Breakout Core Listening on Port ${PORT}`);
+  console.log(`🚀 Pre-Pump Sniper Core Live on Port ${PORT}`);
 });
