@@ -6,12 +6,11 @@ const axios = require('axios');
 
 const PORT = process.env.PORT || 10000;
 
-// Create standard web hook server 
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Solana Guard Engine: Active\n');
+  res.end('Solana Guard Engine v3: Active\n');
 }).listen(PORT, '0.0.0.0', () => {
-  console.log(`📡 [ENGINE LIVE] Active on port ${PORT}`);
+  console.log(`📡 [ENGINE LIVE] Listening on port ${PORT}`);
 });
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
@@ -24,10 +23,10 @@ async function sendBootAlert() {
   for (const chatId of CHAT_IDS) {
     if (!chatId) continue;
     try {
-      await bot.telegram.sendMessage(chatId, "⚡ <b>FAST STREAM ENGINE ACTIVE</b>\n────────────────────────\n• 🪐 <b>Mode:</b> Option 2 Connected\n• 🛰️ <b>Network:</b> Guard Online with Live Heartbeat", { parse_mode: 'HTML' });
-      console.log(`[BOOT SUCCESS] Sent notification to chat target: ${chatId}`);
+      await bot.telegram.sendMessage(chatId, "⚡ <b>STREAM TUNNEL RESTABILIZED</b>\n────────────────────────\n• 🪐 <b>Mode:</b> Option 2 (High Throughput Deployment)\n• 🛡️ <b>Fallback Filter:</b> Enabled (Forcing slow API pass)", { parse_mode: 'HTML' });
+      console.log(`[BOOT] Pushed restabilization message to: ${chatId}`);
     } catch (err) {
-      console.log(`[BOOT ERROR] Target ${chatId} rejected payload: ${err.message}`);
+      console.log(`[BOOT ERROR] Target ${chatId}: ${err.message}`);
     }
   }
 }
@@ -42,12 +41,10 @@ function establishRpcConnection() {
   ws.on('open', () => {
     console.log('⚡ Connected to Helius Solana Node. Stream actively parsing blocks...');
     
-    // Web socket ping keep alive
     pingInterval = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) ws.ping();
     }, 30000);
 
-    // Visual dashboard heartbeat log (Prints every 60 seconds)
     heartbeatInterval = setInterval(() => {
       console.log(`💚 [HEARTBEAT] WebSocket connection healthy. Listening for next Solana block migration...`);
     }, 60000);
@@ -115,10 +112,12 @@ function establishRpcConnection() {
       const isPumpMigration = logMessages.some(log => log.toLowerCase().includes('pump'));
       console.log(`🔎 [SCANNING] Found Pair: ${tokenMint}`);
 
-      // STAGE 1: DEV BACKGROUND HISTORY SCAN
-      let devIsClean = true;
+      let devStatusText = "Clean Pass ✅";
+      let securityStatusText = "Passed Code Scan 🛡️";
+
+      // 🕵️‍♂️ STAGE 1: DEV BACKGROUND HISTORY SCAN
       try {
-        const devCheck = await axios.get(`https://api.rugcheck.xyz/v1/address/${creatorWallet}/tokens`, { timeout: 2500 });
+        const devCheck = await axios.get(`https://api.rugcheck.xyz/v1/address/${creatorWallet}/tokens`, { timeout: 4000 });
         const pastTokens = devCheck.data;
 
         if (Array.isArray(pastTokens) && pastTokens.length > 0) {
@@ -129,19 +128,16 @@ function establishRpcConnection() {
 
           if (maliciousDeployments.length > 0) {
             console.log(`🛑 DROP: Dev wallet history risk found for ${creatorWallet}`);
-            devIsClean = false;
+            return; // Hard drop confirmed scams
           }
         }
       } catch (e) {
-        console.log("⚠️ Dev scan timeout. Defaulting to pass.");
+        devStatusText = "Scan Timeout (Passed) ⚠️";
       }
 
-      if (!devIsClean) return;
-
-      // STAGE 2: REAL-TIME CONTRACT RISK MATRIX
-      let securityPassed = true;
+      // 🛡️ STAGE 2: REAL-TIME CONTRACT RISK MATRIX
       try {
-        const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 2500 });
+        const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 4000 });
         const report = securityCheck.data;
 
         if (report && report.risks) {
@@ -152,14 +148,12 @@ function establishRpcConnection() {
 
           if (hasHoneypotRisk) {
             console.log(`🛑 DROP: Dangerous contract properties on ${tokenMint}`);
-            securityPassed = false;
+            return; // Hard drop confirmed honeypots
           }
         }
       } catch (err) {
-        console.log("⚠️ RugCheck report timeout. Passing to feed.");
+        securityStatusText = "Scan Timeout (Passed) ⚠️";
       }
-
-      if (!securityPassed) return;
 
       console.log(`📬 [MATCH] Forwarding token metrics to Telegram: ${tokenMint}`);
 
@@ -175,8 +169,8 @@ function establishRpcConnection() {
 
 ▶ <b>SECURITY AUDIT RESULTS</b>
 • <b>Creator Wallet:</b> <code>${creatorWallet}</code>
-• <b>Honeypot Shield:</b> Passed Code Scan 🛡️
-• <b>Freeze / Mint Loop:</b> Disabled & Safe
+• <b>Honeypot Shield:</b> ${securityStatusText}
+• <b>Developer History:</b> ${devStatusText}
 ────────────────────────
 ▶ <b>LIGHTNING TRADE EXECUTION</b>
 • <a href="${dexScreenerLink}">DexScreener Link</a>
