@@ -9,13 +9,12 @@ const CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.tr
 
 const recentMints = new Set();
 
-// Helper function for delays
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    return res.end('Solana Ironclad Alpha Core V2: Active\n');
+    return res.end('Solana Deep-Index Alpha Core V3: Active\n');
   }
 
   if (req.method === 'POST' && req.url === '/helius-stream') {
@@ -62,41 +61,37 @@ const server = http.createServer((req, res) => {
           recentMints.add(tokenMint);
           setTimeout(() => recentMints.delete(tokenMint), 60000);
 
-          console.log(`🎯 [STREAM MATCH] Target Mint Identified: ${tokenMint}`);
+          console.log(`🎯 [POOL SEEN] Queuing deep-index tracking routine for: ${tokenMint}`);
 
-          // Non-blocking processing routine
+          // Independent asynchronous worker block
           (async () => {
             let report = null;
             let marketData = null;
             
-            // --- RETRY LOOP FOR DATA INDEXING ---
-            for (let attempt = 1; attempt <= 3; attempt++) {
+            // --- PATIENT INTERACTION LOOP (Up to 2 minutes total processing window) ---
+            for (let attempt = 1; attempt <= 4; attempt++) {
               try {
-                console.log(`🔍 Checking RugCheck for ${tokenMint.substring(0,6)}... (Attempt ${attempt}/3)`);
+                console.log(`⏱️ Scanning index nodes for ${tokenMint.substring(0,6)}... (Attempt ${attempt}/4)`);
                 
                 const rcConfig = process.env.RUGCHECK_JWT ? {
                   headers: { 'Authorization': `Bearer ${process.env.RUGCHECK_JWT}` },
-                  timeout: 4000
-                } : { timeout: 4000 };
+                  timeout: 5000
+                } : { timeout: 5000 };
                 
                 const rcRes = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, rcConfig);
                 
-                if (rcRes.data && rcRes.data.markets) {
+                // Ensure data package contains valid token market fields before resolving
+                if (rcRes.data && rcRes.data.markets && rcRes.data.markets.length > 0) {
                   report = rcRes.data;
-                  break; // Success! Break out of retry loop
+                  break; 
                 }
               } catch (e) {
-                console.log(`⏱️ Token not indexed yet on attempt ${attempt}. Waiting 5s...`);
-                await delay(5000);
+                // If it fails or returns 404/400, pause 30 seconds before attempting next cycle
+                await delay(30000);
               }
             }
 
-            // If completely unindexed after 3 attempts, fallback cleanly
-            if (!report) {
-              console.log(`❌ Max retries reached for ${tokenMint.substring(0,6)}. Proceeding with fallback status.`);
-            }
-
-            // --- EVALUATE SECURITY RULES ---
+            // --- STRATEGIC SECURITY EVALUATION ---
             let hasLockedLiquidity = false;
             let isHoneypot = false;
             let canMintMore = false;
@@ -107,12 +102,12 @@ const server = http.createServer((req, res) => {
               canMintMore = report.risks?.some(r => r.name?.toLowerCase().includes('mint authority') || r.name?.toLowerCase().includes('mintable'));
               
               if (isHoneypot || canMintMore) {
-                console.log(`🛑 [FILTERED OUT] Honeypot/Mintable threat flagged for ${tokenMint}`);
+                console.log(`🛑 [FILTERED OUT] Dropping unsafe contract structure: ${tokenMint}`);
                 return;
               }
             }
 
-            // --- FETCH DATA METRICS ---
+            // --- FETCH TRACKER METRICS ---
             let devAddress = "Unknown Deployer";
             let volume24h = 0;
             let whaleCount = 0;
@@ -122,7 +117,7 @@ const server = http.createServer((req, res) => {
               try {
                 const trackerRes = await axios.get(`https://api.solanatracker.io/tokens/${tokenMint}`, {
                   headers: { 'x-api-key': process.env.SOLANA_TRACKER_API_KEY },
-                  timeout: 4000
+                  timeout: 5000
                 });
                 if (trackerRes.data) {
                   marketData = trackerRes.data;
@@ -133,17 +128,17 @@ const server = http.createServer((req, res) => {
                   if (marketData.creator) {
                     const devHistory = await axios.get(`https://api.solanatracker.io/wallets/${marketData.creator}/history`, {
                       headers: { 'x-api-key': process.env.SOLANA_TRACKER_API_KEY },
-                      timeout: 4000
+                      timeout: 5000
                     });
                     totalPreviousLaunches = devHistory.data?.summary?.totalTokensTraded || 0;
                   }
                 }
               } catch (err) {
-                console.log(`ℹ️ Tracker API processing fallback for ${tokenMint.substring(0,6)}`);
+                console.log(`ℹ️ Base platform synchronization active for ${tokenMint.substring(0,6)}`);
               }
             }
 
-            // --- TELEGRAM DISPATCH GATE ---
+            // --- TELEGRAM NOTIFICATION SYSTEM ---
             const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
             const dexScreenerLink = `https://dexscreener.com/solana/${tokenMint}`;
 
@@ -178,7 +173,7 @@ const server = http.createServer((req, res) => {
                   disable_web_page_preview: true 
                 });
               } catch (tgErr) {
-                console.log(`Telegram dispatch error: ${tgErr.message}`);
+                console.log(`Telegram dispatch failure: ${tgErr.message}`);
               }
             }
           })();
@@ -189,5 +184,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Automated Alpha Core Active on Port ${PORT}`);
+  console.log(`🚀 Deep-Index Alpha Core V3 Active on Port ${PORT}`);
 });
