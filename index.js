@@ -16,7 +16,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.get('/', (req, res) => {
-  res.status(200).send('Solana Tracker Core V8 HIGH-QUALITY ONLY: Online\n');
+  res.status(200).send('Solana Tracker Pre-Pump Engine V9: Online\n');
 });
 
 app.post('/helius-stream', async (req, res) => {
@@ -55,19 +55,16 @@ app.post('/helius-stream', async (req, res) => {
       recentMints.add(tokenMint);
       setTimeout(() => recentMints.delete(tokenMint), 120000); // 2 min deduplication
 
-      // Silent logging to keep console clean
-      console.log(`🎯 [POOL INGESTION] Processing: ${tokenMint.substring(0,6)}...`);
-
-      // Isolated background analysis worker
+      // Background worker to monitor volume buildup
       (async () => {
         try {
-          // ⏳ Wait 45 seconds to let volume accumulate and systems index
+          // ⏳ Give the pool 45 seconds to establish initial buying momentum
           await delay(45000);
 
           let marketData = null;
           let report = null;
 
-          // --- STEP 1: SOLANA TRACKER MARKET & ACTIVITY CHECK ---
+          // --- STEP 1: SOLANA TRACKER BREAKOUT VERIFICATION ---
           if (!process.env.SOLANA_TRACKER_API_KEY) return;
           
           try {
@@ -79,29 +76,26 @@ app.post('/helius-stream', async (req, res) => {
               marketData = trackerRes.data;
             }
           } catch (e) {
-            console.log(`🛑 [QUALITY DROP] Dropping ${tokenMint.substring(0,6)} - Not indexed/Active yet.`);
-            return; 
+            return; // Silently filter out unindexed assets
           }
 
           if (!marketData) return;
 
-          // --- PREMIUM TARGET FILTERS ---
           const volume24h = marketData.pools?.[0]?.volume?.h24 || 0;
           const liquidityUsd = marketData.pools?.[0]?.liquidity?.usd || 0;
+          const whaleCount = marketData.events?.whales?.length || 0;
 
-          // 🚨 RULE 1: Drop micro-volume spam (Must be greater than $5,000 USD)
-          if (Number(volume24h) < 5000) {
-            console.log(`🛑 [VOLUME DROP] Dropping ${tokenMint.substring(0,6)} - Low volume activity ($${Math.round(volume24h)}).`);
-            return;
-          }
+          // 🎯 PRE-PUMP TARGET RANGE FILTERS
+          // Must have at least $500 to show signs of life, but less than $3,500 so you get in early!
+          if (Number(volume24h) < 500 || Number(volume24h) > 3500) return;
 
-          // 🚨 RULE 2: Drop micro-liquidity scams (Must have at least $2,000 USD in pool)
-          if (Number(liquidityUsd) < 2000) {
-            console.log(`🛑 [LIQUIDITY DROP] Dropping ${tokenMint.substring(0,6)} - Weak liquidity pool ($${Math.round(liquidityUsd)}).`);
-            return;
-          }
+          // Ensure it has stable initial liquidity backing
+          if (Number(liquidityUsd) < 1500) return;
 
-          // --- STEP 2: HARD AUDIT VIA RUGCHECK (ONLY FOR THE WINNERS) ---
+          // Ensure smart money or early snipers are backing the trades
+          if (whaleCount < 1) return;
+
+          // --- STEP 2: RUGCHECK HIGH-SPEED AUDIT ---
           try {
             const rcConfig = process.env.RUGCHECK_JWT ? {
               headers: { 'Authorization': `Bearer ${process.env.RUGCHECK_JWT}` },
@@ -111,8 +105,7 @@ app.post('/helius-stream', async (req, res) => {
             const rcRes = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, rcConfig);
             if (rcRes.data) report = rcRes.data;
           } catch (rcErr) {
-            console.log(`🛡️ [SECURITY DROP] Rugcheck offline for high-volume candidate ${tokenMint.substring(0,6)}. Skipped for protection.`);
-            return;
+            return; // Drop if security audit can't verify safety
           }
 
           if (!report) return;
@@ -120,69 +113,31 @@ app.post('/helius-stream', async (req, res) => {
           const hasLockedLiquidity = report.markets?.some(m => m.lpLocked === true || m.lpPercent === 100) || false;
           const canMintMore = report.risks?.some(r => r.name?.toLowerCase().includes('mint authority') || r.name?.toLowerCase().includes('mintable')) || false;
           
-          let dangerousRiskCount = 0;
-          if (Array.isArray(report.risks)) {
-            report.risks.forEach(risk => {
-              const level = risk.level?.toLowerCase() || '';
-              if (level === 'danger' || level === 'critical') dangerousRiskCount += 2;
-              if (level === 'warning' || level === 'medium') dangerousRiskCount += 1;
-            });
-          }
+          if (canMintMore) return; // Drop unsafe honeypots instantly
 
-          // 🚨 RULE 3: Strict honey-pot filter
-          if (canMintMore || dangerousRiskCount >= 4) {
-            console.log(`🛑 [SECURITY DROP] Dropping high-volume ${tokenMint.substring(0,6)} - Failed security parameters.`);
-            return;
-          }
-
-          // Gather extra data for verified winners
           const devAddress = marketData.creator || "Unknown";
-          const whaleCount = marketData.events?.whales?.length || 0;
-          let devReputationString = "Clean / New Dev Profile 👤";
-          
-          try {
-            const devHistoryRes = await axios.get(`https://api.solanatracker.io/wallets/${devAddress}/history`, {
-              headers: { 'x-api-key': process.env.SOLANA_TRACKER_API_KEY },
-              timeout: 5000
-            });
-            if (devHistoryRes.data && devHistoryRes.data.summary) {
-              const summary = devHistoryRes.data.summary;
-              const totalTokens = summary.totalTokensTraded || 0;
-              const totalWins = summary.totalWins || 0; 
-              if (totalTokens > 0) {
-                const winRate = Math.round((totalWins / totalTokens) * 100);
-                devReputationString = winRate >= 60 
-                  ? `High Win-Rate Dev 📈 (${winRate}% Wins over ${totalTokens} tokens)` 
-                  : `Standard Dev Profile 👤 (${winRate}% Win-Rate)`;
-              }
-            }
-          } catch (err) {}
-
-          // --- STEP 3: SEND ONLY HIGH-QUALITY ALERTS ---
           const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
           const dexScreenerLink = `https://dexscreener.com/solana/${tokenMint}`;
 
+          // --- STEP 3: DISPATCH ROCKET EMBED SIGNALS ---
           const telegramAlert = `
-🔥 <b>HIGH-QUALITY COIN DETECTED</b> 🔥
+🚨 <b>EARLY MOMENTUM SIGNAL</b> 🚨
 ────────────────────────
-▶ <b>BLOCK METADATA</b>
-• <b>Token Contract:</b> <code>${tokenMint}</code>
-• <b>Dev Wallet:</b> <code>${devAddress}</code>
+▶ <b>TOKEN ID</b>
+• <b>Mint Contract:</b> <code>${tokenMint}</code>
 ────────────────────────
-▶ <b>🛡️ AUDIT PASS VERDICT</b>
-• <b>Security Status:</b> Verified Clean & Active ✅
-• <b>Liquidity Pool:</b> ${hasLockedLiquidity ? 'Locked 🔒' : 'Active Trading Pool 📊'}
+▶ <b>📈 BREAKOUT METRICS (SUB-3K VOLUME)</b>
+• <b>Current Entry Volume:</b> <code>$${Number(volume24h).toLocaleString()}</code> 🚀
+• <b>Initial Pool Liquidity:</b> <code>$${Number(liquidityUsd).toLocaleString()}</code>
+• <b>Early Whales Injected:</b> <b>${whaleCount} Tracked</b> 🔥
+────────────────────────
+▶ <b>🛡️ SAFETY PARAMETERS</b>
+• <b>LP Status:</b> ${hasLockedLiquidity ? 'Locked 🔒' : 'Active Setup 📊'}
 • <b>Mint Authority:</b> Renounced 🚫
-• <b>Dev Track Record:</b> <b>${devReputationString}</b>
 ────────────────────────
-▶ <b>📊 HIGH VELOCITY MARKET METRICS</b>
-• <b>Current Volume:</b> <b>$${Number(volume24h).toLocaleString()}</b> 🚀
-• <b>Pool Liquidity:</b> <b>$${Number(liquidityUsd).toLocaleString()}</b> 💰
-• <b>Early Whales Tracked:</b> ${whaleCount} 🔥
-────────────────────────
-▶ <b>LIGHTNING TRADE EXECUTION</b>
-• <a href="${dexScreenerLink}">DexScreener Market Chart</a>
-• <a href="${trojanTradeLink}">⚔️ Instant Buy Entry via Trojan Bot</a>
+▶ <b>⚔️ SPEED ENTRY LINKS</b>
+• <a href="${dexScreenerLink}">DexScreener Live Entry Chart</a>
+• <a href="${trojanTradeLink}">⚔️ Snag Entry via Trojan Sniper Bot</a>
 ────────────────────────
 `;
 
@@ -193,20 +148,18 @@ app.post('/helius-stream', async (req, res) => {
                 parse_mode: 'HTML',
                 disable_web_page_preview: true 
               });
-            } catch (tgErr) {
-              console.log(`❌ Telegram dispatch failure: ${tgErr.message}`);
-            }
+            } catch (tgErr) {}
           }
-        } catch (innerError) {
-          console.log(`❌ Analysis runner fault: ${innerError.message}`);
-        }
+        } catch (innerError) {}
       })();
     }
-  } catch (error) {
-    console.log(`Core stream error: ${error.message}`);
-  }
+  } catch (error) {}
+});
+
+app.use((err, req, res, next) => {
+  res.status(500).send('Engine Fault Handler');
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Premium Quality Engine Listening on Port ${PORT}`);
+  console.log(`🚀 Pre-Pump Breakout Core Listening on Port ${PORT}`);
 });
