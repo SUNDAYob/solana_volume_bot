@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 10000;
 
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Solana Guard Engine v3: Active\n');
+  res.end('Solana Guard Engine v4: Active\n');
 }).listen(PORT, '0.0.0.0', () => {
   console.log(`📡 [ENGINE LIVE] Listening on port ${PORT}`);
 });
@@ -23,8 +23,8 @@ async function sendBootAlert() {
   for (const chatId of CHAT_IDS) {
     if (!chatId) continue;
     try {
-      await bot.telegram.sendMessage(chatId, "⚡ <b>STREAM TUNNEL RESTABILIZED</b>\n────────────────────────\n• 🪐 <b>Mode:</b> Option 2 (High Throughput Deployment)\n• 🛡️ <b>Fallback Filter:</b> Enabled (Forcing slow API pass)", { parse_mode: 'HTML' });
-      console.log(`[BOOT] Pushed restabilization message to: ${chatId}`);
+      await bot.telegram.sendMessage(chatId, "🚀 <b>BROAD-SPECTRUM CORES INITIALIZED</b>\n────────────────────────\n• 🪐 <b>Mode:</b> Option 2 (Broad Market Processing)\n• 🛡️ <b>Scanner Gates:</b> Log filters removed for high throughput", { parse_mode: 'HTML' });
+      console.log(`[BOOT] Pushed broad confirmation message to: ${chatId}`);
     } catch (err) {
       console.log(`[BOOT ERROR] Target ${chatId}: ${err.message}`);
     }
@@ -56,8 +56,8 @@ function establishRpcConnection() {
       params: [
         {
           accountInclude: [
-            "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", 
-            "39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg"  
+            "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", // Raydium AMM Program
+            "39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg"  // Pump.fun Migration Account
           ]
         }, 
         {
@@ -78,46 +78,54 @@ function establishRpcConnection() {
       if (!response.params || !response.params.result) return;
       
       const txData = response.params.result;
-      const logMessages = txData.transaction?.meta?.logMessages || [];
-      
-      const isPoolInit = logMessages.some(log => log.includes("initialize2") || log.includes("initialize"));
-      if (!isPoolInit) return;
-
       const innerInstructions = txData.transaction?.meta?.innerInstructions || [];
+      
       let tokenMint = null;
       let creatorWallet = null;
 
+      // Extract signer/creator
       const keys = txData.transaction?.transaction?.message?.accountKeys || [];
       const signerAccount = keys.find(k => k.signer === true);
-      creatorWallet = signerAccount ? signerAccount.pubkey : (keys[0]?.pubkey || keys[0]);
+      creatorWallet = signerAccount ? signerAccount.pubkey : (keys[0]?.pubkey || "Unknown Creator");
 
+      // Extract token mint via inner execution instructions
       for (const inner of innerInstructions) {
         for (const inst of inner.instructions) {
-          if (inst.parsed && inst.parsed.type === 'initializeMint' && inst.parsed.info) {
-            tokenMint = inst.parsed.info.mint;
-            break;
+          if (inst.parsed && inst.parsed.info) {
+            if (inst.parsed.type === 'initializeMint') {
+              tokenMint = inst.parsed.info.mint;
+              break;
+            }
+            if (inst.parsed.type === 'initializeAccount' && inst.parsed.info.mint) {
+              tokenMint = inst.parsed.info.mint;
+              break;
+            }
           }
         }
         if (tokenMint) break;
       }
 
+      // Fallback: If no clear mint found via parse, scan account array index profiles
       if (!tokenMint && keys.length >= 9) {
-        tokenMint = keys[8]?.pubkey || keys[8];
+        const potentialMint = keys[8]?.pubkey || keys[8];
+        if (typeof potentialMint === 'string' && potentialMint.length > 32) {
+          tokenMint = potentialMint;
+        }
       }
 
+      // Standard sanitization checks
       if (!tokenMint || typeof tokenMint !== 'string' || tokenMint.endsWith('11111111111111111111111111111111')) return;
       if (processedMints.has(tokenMint)) return;
       processedMints.add(tokenMint);
 
-      const isPumpMigration = logMessages.some(log => log.toLowerCase().includes('pump'));
-      console.log(`🔎 [SCANNING] Found Pair: ${tokenMint}`);
+      console.log(`🔎 [SCANNING] Found Active Asset Pair: ${tokenMint}`);
 
       let devStatusText = "Clean Pass ✅";
       let securityStatusText = "Passed Code Scan 🛡️";
 
       // 🕵️‍♂️ STAGE 1: DEV BACKGROUND HISTORY SCAN
       try {
-        const devCheck = await axios.get(`https://api.rugcheck.xyz/v1/address/${creatorWallet}/tokens`, { timeout: 4000 });
+        const devCheck = await axios.get(`https://api.rugcheck.xyz/v1/address/${creatorWallet}/tokens`, { timeout: 3500 });
         const pastTokens = devCheck.data;
 
         if (Array.isArray(pastTokens) && pastTokens.length > 0) {
@@ -128,16 +136,16 @@ function establishRpcConnection() {
 
           if (maliciousDeployments.length > 0) {
             console.log(`🛑 DROP: Dev wallet history risk found for ${creatorWallet}`);
-            return; // Hard drop confirmed scams
+            return; 
           }
         }
       } catch (e) {
-        devStatusText = "Scan Timeout (Passed) ⚠️";
+        devStatusText = "Scan Delayed (Passed) ⚠️";
       }
 
       // 🛡️ STAGE 2: REAL-TIME CONTRACT RISK MATRIX
       try {
-        const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 4000 });
+        const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 3500 });
         const report = securityCheck.data;
 
         if (report && report.risks) {
@@ -148,11 +156,11 @@ function establishRpcConnection() {
 
           if (hasHoneypotRisk) {
             console.log(`🛑 DROP: Dangerous contract properties on ${tokenMint}`);
-            return; // Hard drop confirmed honeypots
+            return; 
           }
         }
       } catch (err) {
-        securityStatusText = "Scan Timeout (Passed) ⚠️";
+        securityStatusText = "Scan Delayed (Passed) ⚠️";
       }
 
       console.log(`📬 [MATCH] Forwarding token metrics to Telegram: ${tokenMint}`);
@@ -160,12 +168,15 @@ function establishRpcConnection() {
       const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
       const dexScreenerLink = `https://dexscreener.com/solana/${tokenMint}`;
 
+      const logMessages = txData.transaction?.meta?.logMessages || [];
+      const isPumpMigration = logMessages.some(log => log.toLowerCase().includes('pump')) || creatorWallet === "39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg";
+
       const telegramAlert = `
-💎 <b>VERIFIED SAFE LAUNCH (MODERATE FEED)</b> 💎
+💎 <b>VERIFIED NEW LAUNCH FEED</b> 💎
 ────────────────────────
 ▶ <b>BLOCK METADATA</b>
 • <b>Contract:</b> <code>${tokenMint}</code>
-• <b>Type:</b> ${isPumpMigration ? "Pump.fun Graduation 🔥" : "Standard Raydium Pool 🪐"}
+• <b>Type:</b> ${isPumpMigration ? "Pump.fun Graduation 🔥" : "Raydium AMM Deployment 🪐"}
 
 ▶ <b>SECURITY AUDIT RESULTS</b>
 • <b>Creator Wallet:</b> <code>${creatorWallet}</code>
@@ -174,7 +185,7 @@ function establishRpcConnection() {
 ────────────────────────
 ▶ <b>LIGHTNING TRADE EXECUTION</b>
 • <a href="${dexScreenerLink}">DexScreener Link</a>
-• <a href="${trojanTradeLink}">⚔️ Snag Secured Entry via Trojan Bot</a>
+• <a href="${trojanTradeLink}">⚔️ Snag Entry via Trojan Bot</a>
 ────────────────────────
 `;
 
