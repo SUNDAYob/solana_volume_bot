@@ -6,10 +6,9 @@ const axios = require('axios');
 
 const PORT = process.env.PORT || 10000;
 
-// Keep-alive web portal for Render & UptimeRobot
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Solana Direct Log Engine v7: Active\n');
+  res.end('Solana Guard Engine v8.5: Active\n');
 }).listen(PORT, '0.0.0.0', () => {
   console.log(`📡 [PORT BIND] Web interface online on port ${PORT}`);
 });
@@ -18,13 +17,13 @@ const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 const CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.trim());
 const HELIUS_KEY = process.env.HELIUS_API_KEY || '';
 
-const processedSignatures = new Set();
+const processedMints = new Set();
 
 async function sendBootAlert() {
   for (const chatId of CHAT_IDS) {
     if (!chatId) continue;
     try {
-      await bot.telegram.sendMessage(chatId, "🎯 <b>LIGHTSPEED LOG CORES ONLINE</b>\n────────────────────────\n• 🪐 <b>Engine:</b> Log Subscription Filter (v7)\n• ⚡ <b>Throughput:</b> Zero-Buffer Blockchain Capture\n• 🛡️ <b>Status:</b> Listening for Raydium Initializations...", { parse_mode: 'HTML' });
+      await bot.telegram.sendMessage(chatId, "🛡️ <b>AUTOMATED SECURITY PROTOCOLS LIVE</b>\n────────────────────────\n• 🪐 <b>Engine:</b> Fail-Safe Shield Stream (v8.5)\n• ⚡ <b>Security:</b> Honeypot & Rug Filter Enabled\n• 🚦 <b>Bypass:</b> Active (API delays will not stall stream)", { parse_mode: 'HTML' });
       console.log(`[BOOT] Status ping delivered to target: ${chatId}`);
     } catch (err) {
       console.log(`[BOOT ERROR] Could not signal chat ${chatId}: ${err.message}`);
@@ -34,7 +33,6 @@ async function sendBootAlert() {
 sendBootAlert();
 
 function establishRpcConnection() {
-  // Use the standard Helius RPC HTTP URL for fast transaction lookups
   const rpcHttpUrl = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`;
   const wsUrl = `wss://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`;
   const ws = new WebSocket(wsUrl);
@@ -52,18 +50,13 @@ function establishRpcConnection() {
       console.log(`💚 [HEARTBEAT] Log stream healthy. Watching for new pool initializations...`);
     }, 60000);
 
-    // Subscribe ONLY to Raydium Program logs mentioning initialize2
     const requestPayload = {
       jsonrpc: "2.0",
       id: 1,
       method: "logsSubscribe",
       params: [
-        {
-          mentions: ["675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8"]
-        },
-        {
-          commitment: "confirmed"
-        }
+        { mentions: ["675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8"] },
+        { commitment: "confirmed" }
       ]
     };
     ws.send(JSON.stringify(requestPayload));
@@ -78,16 +71,9 @@ function establishRpcConnection() {
       const logs = logData.logs || [];
       const signature = logData.signature;
 
-      // Check for Raydium pool creation signature
       const isNewPool = logs.some(log => log.includes("initialize2"));
       if (!isNewPool) return;
 
-      if (processedSignatures.has(signature)) return;
-      processedSignatures.add(signature);
-
-      console.log(`🚀 [FOUND POOL] Raydium creation signature identified: ${signature}`);
-
-      // Fetch the transaction details via standard HTTP post to prevent WebSocket choking
       setTimeout(async () => {
         try {
           const txResponse = await axios.post(rpcHttpUrl, {
@@ -96,11 +82,7 @@ function establishRpcConnection() {
             method: "getTransaction",
             params: [
               signature,
-              {
-                commitment: "confirmed",
-                maxSupportedTransactionVersion: 0,
-                encoding: "jsonParsed"
-              }
+              { commitment: "confirmed", maxSupportedTransactionVersion: 0, encoding: "jsonParsed" }
             ]
           }, { timeout: 5000 });
 
@@ -108,16 +90,68 @@ function establishRpcConnection() {
           if (!tx) return;
 
           const accountKeys = tx.transaction?.message?.accountKeys || [];
-          let tokenMint = null;
+          const innerInstructions = tx.meta?.innerInstructions || [];
+          
+          let potentialMints = [];
 
-          // Extract token mint from account logs or internal keys
-          if (accountKeys.length >= 9) {
-            tokenMint = accountKeys[8]?.pubkey || accountKeys[8];
+          accountKeys.forEach(k => {
+            const pubkey = typeof k === 'string' ? k : k.pubkey;
+            if (pubkey) potentialMints.push(pubkey);
+          });
+
+          innerInstructions.forEach(inner => {
+            inner.instructions.forEach(inst => {
+              if (inst.parsed?.info?.mint) potentialMints.push(inst.parsed.info.mint);
+            });
+          });
+
+          const systemExclusions = [
+            '11111111111111111111111111111111',
+            'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+            '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8',
+            'So11111111111111111111111111111111111111112',
+            'ComputeBudget111111111111111111111111111111',
+            'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'
+          ];
+
+          let tokenMint = potentialMints.find(mint => 
+            mint && 
+            mint.length >= 32 && 
+            !systemExclusions.includes(mint) &&
+            !mint.startsWith('Sysvar')
+          );
+
+          if (!tokenMint || processedMints.has(tokenMint)) return;
+          processedMints.add(tokenMint);
+
+          // 🛡️ FAIL-SAFE RUGCHECK INTELLIGENCE LOOP
+          let securityStatusText = "Clean Pass ✅";
+          try {
+            // Enforce a strict 2-second timeout to protect our pipeline from external lag
+            const securityCheck = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, { timeout: 2000 });
+            const report = securityCheck.data;
+
+            if (report && report.risks) {
+              const hasDangerousRisks = report.risks.some(risk => {
+                const riskName = (risk.name || '').toLowerCase();
+                return riskName.includes('mint') || riskName.includes('freeze') || riskName.includes('honeypot');
+              });
+
+              if (hasDangerousRisks) {
+                console.log(`🛑 [DROPPED] Dangerous mechanics caught on contract: ${tokenMint}`);
+                return; 
+              }
+              
+              if (report.score > 4000) {
+                securityStatusText = `⚠️ High Risk Profile (${report.score})`;
+              }
+            }
+          } catch (apiErr) {
+            // Secure fallback: If the free API endpoint flags us, we push the signal out immediately anyway
+            securityStatusText = "Scan Bypassed (API Traffic High) ⏱️";
           }
 
-          if (!tokenMint || typeof tokenMint !== 'string' || tokenMint.endsWith('11111111111111111111111111111111')) return;
-
-          console.log(`📬 [MATCH] Forwarding verified mint: ${tokenMint}`);
+          console.log(`📬 [MATCH] Forwarding parsed coin profile: ${tokenMint}`);
 
           const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
           const dexScreenerLink = `https://dexscreener.com/solana/${tokenMint}`;
@@ -128,6 +162,9 @@ function establishRpcConnection() {
 ▶ <b>BLOCK METADATA</b>
 • <b>Token Contract:</b> <code>${tokenMint}</code>
 • <b>Router Target:</b> Raydium AMM V4 🪐
+────────────────────────
+▶ <b>🛡️ AUTOMATED SECURITY SCAN</b>
+• <b>Status Result:</b> <b>${securityStatusText}</b>
 ────────────────────────
 ▶ <b>LIGHTNING TRADE EXECUTION</b>
 • <a href="${dexScreenerLink}">DexScreener Market Chart</a>
@@ -147,12 +184,12 @@ function establishRpcConnection() {
             }
           }
         } catch (fetchErr) {
-          console.log(`⚠️ Transaction parsing bypassed: ${fetchErr.message}`);
+          console.log(`Log fetch bypass: ${fetchErr.message}`);
         }
-      }, 1000); // Tiny 1-second delay to ensure ledger index matches perfectly
+      }, 1200); 
 
     } catch (parseError) {
-      // Step over formatting variations gracefully
+      // Step over formatting variations
     }
   });
 
