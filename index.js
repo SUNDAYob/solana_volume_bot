@@ -9,16 +9,18 @@ const CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.tr
 
 const recentMints = new Set();
 
+// 🟢 CRITICAL FIX: Create and bind the server immediately so Render's port scan passes instantly!
 const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    return res.end('Solana Complete Alpha Filtration Core\n');
+    return res.end('Solana Complete Alpha Filtration Core: Active\n');
   }
 
   if (req.method === 'POST' && req.url === '/helius-stream') {
     let chunks = [];
     req.on('data', chunk => { chunks.push(chunk); });
     req.on('end', async () => {
+      // Respond "OK" instantly to Helius so the stream never lags
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       res.end('OK');
 
@@ -35,6 +37,20 @@ const server = http.createServer((req, res) => {
           const tokenTransfers = tx.tokenTransfers || [];
           if (tokenTransfers.length > 0 && tokenTransfers[0].tokenMint) {
             tokenMint = tokenTransfers[0].tokenMint;
+          }
+
+          if (!tokenMint && tx.instructions) {
+            for (const inst of tx.instructions) {
+              if (inst.accounts && inst.accounts.length > 2) {
+                const structuralMint = inst.accounts.find(acc => 
+                  acc !== '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8' && 
+                  acc !== 'So11111111111111111111111111111111111111112' &&
+                  acc !== 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' &&
+                  acc.length >= 32 && !acc.startsWith('Sysvar')
+                );
+                if (structuralMint) { tokenMint = structuralMint; break; }
+              }
+            }
           }
 
           if (!tokenMint || tokenMint.includes('11111111111111111111111111111111')) continue;
@@ -59,19 +75,13 @@ const server = http.createServer((req, res) => {
               
               if (!report) return;
 
-              // Validate Liquidity Lock status
               const hasLockedLiquidity = report.markets?.some(m => m.lpLocked === true || m.lpPercent === 100);
-              
-              // Validate Honeypot Risks
               const isHoneypot = report.risks?.some(r => r.name?.toLowerCase().includes('freeze') || r.name?.toLowerCase().includes('honeypot'));
-
-              // Validate Mint Authority (Strictly block if dev can still mint coins)
-              // RugCheck details the mint authority state in token meta properties or risk naming conventions
               const canMintMore = report.risks?.some(r => r.name?.toLowerCase().includes('mint authority') || r.name?.toLowerCase().includes('mintable'));
 
               if (isHoneypot || !hasLockedLiquidity || canMintMore) {
-                console.log(`🛑 [FILTERED] Failed Safety Criteria (Honeypot: ${isHoneypot}, Locked LP: ${hasLockedLiquidity}, Mintable: ${canMintMore}) for ${tokenMint}`);
-                return; // Silently drop unsafe tokens
+                console.log(`🛑 [FILTERED] Unsafe token dropped: ${tokenMint}`);
+                return; 
               }
 
               // --------------------------------------------------------
@@ -81,7 +91,6 @@ const server = http.createServer((req, res) => {
                 headers: { 'x-api-key': process.env.SOLANA_TRACKER_API_KEY }
               });
               const marketData = trackerRes.data;
-
               if (!marketData) return;
 
               const devAddress = marketData.creator;
@@ -96,17 +105,12 @@ const server = http.createServer((req, res) => {
               const totalPreviousLaunches = devHistory.data?.summary?.totalTokensTraded || 0;
               const avgHoldTime = devHistory.data?.summary?.avgHoldTimeSecs || 999;
 
-              // If dev has launched historical tokens and instantly dumped them within 60s, flag as malicious
               if (avgHoldTime < 60 && totalPreviousLaunches > 3) {
-                console.log(`🛑 [FILTERED] Dev profile marked as malicious launcher: ${devAddress}`);
+                console.log(`🛑 [FILTERED] Bad Dev history found for wallet: ${devAddress}`);
                 return;
               }
 
-              // Establish parameters for active trade volume velocity (e.g., minimum $5,000 to register momentum)
-              if (volume24h < 5000) { 
-                console.log(`🛑 [FILTERED] Insufficient early trading volume: $${volume24h}`);
-                return; 
-              }
+              if (volume24h < 5000) return; 
 
               // --------------------------------------------------------
               // PIPELINE PASSED: Dispatch High-Conviction Alert
@@ -146,15 +150,19 @@ const server = http.createServer((req, res) => {
               }
 
             } catch (err) {
-              console.log(`Scan Processing Interrupted: ${err.message}`);
+              console.log(`Filter processing issue: ${err.message}`);
             }
           }, 15000); 
         }
       } catch (parseError) {}
     });
+  } else if (req.url !== '/') {
+    res.writeHead(404);
+    res.end();
   }
 });
 
+// 🚀 Open the port immediately on startup!
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Automated Alpha Core Active on Port ${PORT}`);
 });
