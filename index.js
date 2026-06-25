@@ -15,14 +15,11 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Vital health checkpoint for Render's firewall scanner
 app.get('/', (req, res) => {
-  res.status(200).send('Solana Track-Record Core V4 (Express): Online\n');
+  res.status(200).send('Solana Tracker Core V5 Optimized: Online\n');
 });
 
-// Helius Webhook Ingestion Receiver
 app.post('/helius-stream', async (req, res) => {
-  // Acknowledge the payload immediately to avoid webhook dropouts
   res.status(200).send('OK');
 
   try {
@@ -56,99 +53,76 @@ app.post('/helius-stream', async (req, res) => {
 
       if (recentMints.has(tokenMint)) continue;
       recentMints.add(tokenMint);
-      setTimeout(() => recentMints.delete(tokenMint), 60000);
+      setTimeout(() => recentMints.delete(tokenMint), 120000); // 2 min deduplication
 
-      console.log(`🎯 [POOL SEEN] Analyzing mint: ${tokenMint}`);
+      console.log(`🎯 [POOL SEEN] Ingesting token: ${tokenMint}`);
 
-      // Process metadata calculations safely inside a protected context
+      // Safe isolated async processing background worker
       (async () => {
         try {
+          // Wait 45 seconds to give external databases a fair setup window
+          await delay(45000);
+
           let marketData = null;
           let report = null;
+          let devAddress = "Unknown Deployer";
+          let volume24h = "Pending Check";
+          let whaleCount = 0;
 
-          // ⏳ Give Solana Tracker 30 seconds to index the newly created token pair
-          console.log(`⏳ Waiting 30s for indexing on ${tokenMint.substring(0,6)}...`);
-          await delay(30000); 
+          // --- STEP 1: READ AUDIT REPORT VIA RUGCHECK ---
+          try {
+            const rcConfig = process.env.RUGCHECK_JWT ? {
+              headers: { 'Authorization': `Bearer ${process.env.RUGCHECK_JWT}` },
+              timeout: 6000
+            } : { timeout: 6000 };
+            
+            const rcRes = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, rcConfig);
+            if (rcRes.data) report = rcRes.data;
+          } catch (rcErr) {
+            console.log(`ℹ️ Rugcheck 404/Timeout skipped for ${tokenMint.substring(0,6)}`);
+          }
 
-          // --- STEP 1: SOLANA TRACKER API RETRY TUNNEL ---
-          for (let attempt = 1; attempt <= 3; attempt++) {
+          // --- STEP 2: CONSERVATIVE SINGLE-CALL MARKET EXTRACTION ---
+          if (process.env.SOLANA_TRACKER_API_KEY) {
             try {
-              if (!process.env.SOLANA_TRACKER_API_KEY) {
-                console.log("❌ Missing SOLANA_TRACKER_API_KEY in environment variables!");
-                return;
-              }
-              
               const trackerRes = await axios.get(`https://api.solanatracker.io/tokens/${tokenMint}`, {
                 headers: { 'x-api-key': process.env.SOLANA_TRACKER_API_KEY },
                 timeout: 5000
               });
-
-              if (trackerRes.data && trackerRes.data.pools && trackerRes.data.pools.length > 0) {
+              if (trackerRes.data) {
                 marketData = trackerRes.data;
-                break; 
+                volume24h = marketData.pools?.[0]?.volume?.h24 ? `$${Number(marketData.pools[0].volume.h24).toLocaleString()}` : "$0";
+                whaleCount = marketData.events?.whales?.length || 0;
+                if (marketData.creator) devAddress = marketData.creator;
               }
             } catch (e) {
-              console.log(`⚠️ Tracker Token API Attempt ${attempt} failed for ${tokenMint.substring(0,6)}: ${e.message}`);
-              if (attempt < 3) await delay(8000); // Wait 8 seconds before retrying
+              console.log(`ℹ️ Solana Tracker unindexed (404) for ${tokenMint.substring(0,6)} - Dispatching with fallback metadata.`);
             }
           }
 
-          // Strict filter criteria: drop if completely unindexed or data payload missing
-          if (!marketData) {
-            console.log(`🛑 [FILTERED] Dropping ${tokenMint.substring(0,6)} - Token metadata not available yet.`);
-            return;
-          }
-
-          const volume24h = marketData.pools?.[0]?.volume?.h24 || 0;
-          if (Number(volume24h) <= 0) {
-            console.log(`🛑 [FILTERED] Dropping ${tokenMint.substring(0,6)} - Zero trading volume detected.`);
-            return;
-          }
-
-          const devAddress = marketData.creator || "Unknown Deployer";
           let devReputationString = "New Dev Profile 👤";
           
-          // --- STEP 2: WALLET WIN-RATE EXTRACTION ENGINE ---
-          if (marketData.creator && process.env.SOLANA_TRACKER_API_KEY) {
+          // --- STEP 3: OPTIONAL WALLET HISTORY CHECK ---
+          if (marketData && marketData.creator && process.env.SOLANA_TRACKER_API_KEY) {
             try {
               const devHistoryRes = await axios.get(`https://api.solanatracker.io/wallets/${devAddress}/history`, {
                 headers: { 'x-api-key': process.env.SOLANA_TRACKER_API_KEY },
                 timeout: 5000
               });
-              
               if (devHistoryRes.data && devHistoryRes.data.summary) {
                 const summary = devHistoryRes.data.summary;
                 const totalTokens = summary.totalTokensTraded || 0;
                 const totalWins = summary.totalWins || 0; 
-                
                 if (totalTokens > 0) {
                   const winRate = Math.round((totalWins / totalTokens) * 100);
-                  if (winRate >= 60) {
-                    devReputationString = `Dev 60%+ Good Track Record 📈 (${winRate}% Wins over ${totalTokens} setups)`;
-                  } else {
-                    devReputationString = `Low Historical Track Record ⚠️ (${winRate}% Win-Rate)`;
-                  }
+                  devReputationString = winRate >= 60 
+                    ? `Dev 60%+ Good Track Record 📈 (${winRate}% Wins)` 
+                    : `Low Historical Track Record ⚠️ (${winRate}% Win-Rate)`;
                 }
               }
-            } catch (err) {
-              console.log(`ℹ️ Tracker History API omitted for ${devAddress.substring(0,6)}: ${err.message}`);
-            }
+            } catch (err) {}
           }
 
-          // --- STEP 3: SECURITY DATA RECOVERY (RUGCHECK) ---
-          try {
-            const rcConfig = process.env.RUGCHECK_JWT ? {
-              headers: { 'Authorization': `Bearer ${process.env.RUGCHECK_JWT}` },
-              timeout: 5000
-            } : { timeout: 5000 };
-            
-            const rcRes = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, rcConfig);
-            if (rcRes.data) report = rcRes.data;
-          } catch (rcErr) {
-            console.log(`ℹ️ Rugcheck API omitted for ${tokenMint.substring(0,6)}`);
-          }
-
-          const whaleCount = marketData.events?.whales?.length || 0;
           let hasLockedLiquidity = false;
           let canMintMore = false;
 
@@ -157,12 +131,12 @@ app.post('/helius-stream', async (req, res) => {
             canMintMore = report.risks?.some(r => r.name?.toLowerCase().includes('mint authority') || r.name?.toLowerCase().includes('mintable')) || false;
           }
 
-          // --- STEP 4: TELEGRAM NOTIFICATION BROADCAST ---
+          // --- STEP 4: TELEGRAM PACKAGING ---
           const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
           const dexScreenerLink = `https://dexscreener.com/solana/${tokenMint}`;
 
           const telegramAlert = `
-💎 <b>HIGH CONVICTION POOL MATCHED</b> 💎
+💎 <b>POOL METRICS DISCOVERED</b> 💎
 ────────────────────────
 ▶ <b>BLOCK METADATA</b>
 • <b>Token Contract:</b> <code>${tokenMint}</code>
@@ -174,7 +148,7 @@ app.post('/helius-stream', async (req, res) => {
 • <b>Dev Reputation:</b> <b>${devReputationString}</b>
 ────────────────────────
 ▶ <b>📊 LIVE MARKET METRICS</b>
-• <b>Current Volume Velocity:</b> $${Number(volume24h).toLocaleString()}
+• <b>Current Volume Velocity:</b> ${volume24h}
 • <b>Early Whales Tracked:</b> ${whaleCount} 🔥
 ────────────────────────
 ▶ <b>LIGHTNING TRADE EXECUTION</b>
@@ -191,11 +165,11 @@ app.post('/helius-stream', async (req, res) => {
                 disable_web_page_preview: true 
               });
             } catch (tgErr) {
-              console.log(`❌ Telegram Dispatch Failed for chat ${chatId}: ${tgErr.message}`);
+              console.log(`❌ Telegram Send Failure: ${tgErr.message}`);
             }
           }
         } catch (innerError) {
-          console.log(`❌ Critical error in background tracking runtime: ${innerError.message}`);
+          console.log(`❌ Core background worker error: ${innerError.message}`);
         }
       })();
     }
