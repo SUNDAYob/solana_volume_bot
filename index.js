@@ -2,68 +2,67 @@ const http = require('http');
 require('dotenv').config();
 const { Telegraf } = require('telegraf');
 const WebSocket = require('ws');
+const axios = require('axios');
 
 const PORT = process.env.PORT || 10000;
 
-// Continuous Web Interface for Render & UptimeRobot
+// Keep-alive web portal for Render & UptimeRobot
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Solana Defi Engine v6: Active\n');
+  res.end('Solana Direct Log Engine v7: Active\n');
 }).listen(PORT, '0.0.0.0', () => {
-  console.log(`📡 [ENGINE LIVE] Permanent web binding active on port ${PORT}`);
+  console.log(`📡 [PORT BIND] Web interface online on port ${PORT}`);
 });
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 const CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.trim());
 const HELIUS_KEY = process.env.HELIUS_API_KEY || '';
 
-const processedMints = new Set();
+const processedSignatures = new Set();
 
 async function sendBootAlert() {
   for (const chatId of CHAT_IDS) {
     if (!chatId) continue;
     try {
-      await bot.telegram.sendMessage(chatId, "🎯 <b>PERMANENT CORES DEPLOYED</b>\n────────────────────────\n• 🪐 <b>Engine:</b> Account Stream Matrix Active\n• ⚡ <b>Velocity:</b> Instant Pool Creation Trigger\n• 🛡️ <b>Status:</b> Zero-Latency Bypass Live", { parse_mode: 'HTML' });
-      console.log(`[BOOT COMPLETE] Stream linked to chat ID: ${chatId}`);
+      await bot.telegram.sendMessage(chatId, "🎯 <b>LIGHTSPEED LOG CORES ONLINE</b>\n────────────────────────\n• 🪐 <b>Engine:</b> Log Subscription Filter (v7)\n• ⚡ <b>Throughput:</b> Zero-Buffer Blockchain Capture\n• 🛡️ <b>Status:</b> Listening for Raydium Initializations...", { parse_mode: 'HTML' });
+      console.log(`[BOOT] Status ping delivered to target: ${chatId}`);
     } catch (err) {
-      console.log(`[BOOT ERROR] Target ${chatId} communication failed: ${err.message}`);
+      console.log(`[BOOT ERROR] Could not signal chat ${chatId}: ${err.message}`);
     }
   }
 }
 sendBootAlert();
 
 function establishRpcConnection() {
+  // Use the standard Helius RPC HTTP URL for fast transaction lookups
+  const rpcHttpUrl = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`;
   const wsUrl = `wss://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`;
   const ws = new WebSocket(wsUrl);
   let pingInterval;
   let heartbeatInterval;
 
   ws.on('open', () => {
-    console.log('⚡ Pipeline linked directly to Solana State Machine...');
+    console.log('⚡ WebSocket channel linked to Solana Runtime logs...');
     
     pingInterval = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) ws.ping();
     }, 30000);
 
     heartbeatInterval = setInterval(() => {
-      console.log(`💚 [HEARTBEAT] Connection verified. State tracking active...`);
+      console.log(`💚 [HEARTBEAT] Log stream healthy. Watching for new pool initializations...`);
     }, 60000);
 
-    // Subscribe directly to the Raydium AMM Liquidity Program Account Creation State
+    // Subscribe ONLY to Raydium Program logs mentioning initialize2
     const requestPayload = {
       jsonrpc: "2.0",
       id: 1,
-      method: "programSubscribe",
+      method: "logsSubscribe",
       params: [
-        "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
         {
-          commitment: "confirmed",
-          encoding: "base64",
-          filters: [
-            {
-              dataSize: 752 // Exact layout size of a verified Raydium Liquidity Pool State
-            }
-          ]
+          mentions: ["675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8"]
+        },
+        {
+          commitment: "confirmed"
         }
       ]
     };
@@ -75,35 +74,60 @@ function establishRpcConnection() {
       const response = JSON.parse(data);
       if (!response.params || !response.params.result) return;
 
-      const accountInfo = response.params.result.value;
-      const poolPublicKey = accountInfo.pubkey;
-      const base64Data = accountInfo.account.data[0];
+      const logData = response.params.result.value;
+      const logs = logData.logs || [];
+      const signature = logData.signature;
 
-      if (!base64Data) return;
-      const buffer = Buffer.from(base64Data, 'base64');
+      // Check for Raydium pool creation signature
+      const isNewPool = logs.some(log => log.includes("initialize2"));
+      if (!isNewPool) return;
 
-      // Exact layout byte offsets for Raydium AMM Open Book Vaults
-      const tokenMintAddressBytes = buffer.slice(400, 432); 
-      const tokenMint = tokenMintAddressBytes.toString('hex'); // Raw fallback conversion
+      if (processedSignatures.has(signature)) return;
+      processedSignatures.add(signature);
 
-      // Extract public key representation from the account stream buffer
-      let finalMint = poolPublicKey; 
-      
-      // Basic sanity filters to prevent processing junk system data
-      if (processedMints.has(finalMint)) return;
-      processedMints.add(finalMint);
+      console.log(`🚀 [FOUND POOL] Raydium creation signature identified: ${signature}`);
 
-      console.log(`📬 [MATCH] Found New Liquidity Pool State: ${finalMint}`);
+      // Fetch the transaction details via standard HTTP post to prevent WebSocket choking
+      setTimeout(async () => {
+        try {
+          const txResponse = await axios.post(rpcHttpUrl, {
+            jsonrpc: "2.0",
+            id: "get-tx",
+            method: "getTransaction",
+            params: [
+              signature,
+              {
+                commitment: "confirmed",
+                maxSupportedTransactionVersion: 0,
+                encoding: "jsonParsed"
+              }
+            ]
+          }, { timeout: 5000 });
 
-      const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${finalMint}`;
-      const dexScreenerLink = `https://dexscreener.com/solana/${finalMint}`;
+          const tx = txResponse.data?.result;
+          if (!tx) return;
 
-      const telegramAlert = `
-🔥 <b>NEW VERIFIED LIVE STREAM ALERT</b> 🔥
+          const accountKeys = tx.transaction?.message?.accountKeys || [];
+          let tokenMint = null;
+
+          // Extract token mint from account logs or internal keys
+          if (accountKeys.length >= 9) {
+            tokenMint = accountKeys[8]?.pubkey || accountKeys[8];
+          }
+
+          if (!tokenMint || typeof tokenMint !== 'string' || tokenMint.endsWith('11111111111111111111111111111111')) return;
+
+          console.log(`📬 [MATCH] Forwarding verified mint: ${tokenMint}`);
+
+          const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
+          const dexScreenerLink = `https://dexscreener.com/solana/${tokenMint}`;
+
+          const telegramAlert = `
+🔥 <b>NEW LIVE POOL DETECTED</b> 🔥
 ────────────────────────
 ▶ <b>BLOCK METADATA</b>
-• <b>Pool Identity Account:</b> <code>${finalMint}</code>
-• <b>Target Network:</b> Raydium Protocol Open-Market 🪐
+• <b>Token Contract:</b> <code>${tokenMint}</code>
+• <b>Router Target:</b> Raydium AMM V4 🪐
 ────────────────────────
 ▶ <b>LIGHTNING TRADE EXECUTION</b>
 • <a href="${dexScreenerLink}">DexScreener Market Chart</a>
@@ -111,27 +135,31 @@ function establishRpcConnection() {
 ────────────────────────
 `;
 
-      for (const chatId of CHAT_IDS) {
-        if (!chatId) continue;
-        try {
-          await bot.telegram.sendMessage(chatId, telegramAlert, { 
-            parse_mode: 'HTML',
-            disable_web_page_preview: true 
-          });
-        } catch (postErr) {
-          console.log(`❌ Telegram Dispatch Failed [${chatId}]: ${postErr.message}`);
+          for (const chatId of CHAT_IDS) {
+            if (!chatId) continue;
+            try {
+              await bot.telegram.sendMessage(chatId, telegramAlert, { 
+                parse_mode: 'HTML',
+                disable_web_page_preview: true 
+              });
+            } catch (postErr) {
+              console.log(`❌ Telegram dispatch fail: ${postErr.message}`);
+            }
+          }
+        } catch (fetchErr) {
+          console.log(`⚠️ Transaction parsing bypassed: ${fetchErr.message}`);
         }
-      }
+      }, 1000); // Tiny 1-second delay to ensure ledger index matches perfectly
 
     } catch (parseError) {
-      // Gracefully step over empty system byte notifications
+      // Step over formatting variations gracefully
     }
   });
 
   ws.on('close', () => {
     clearInterval(pingInterval);
     clearInterval(heartbeatInterval);
-    console.log('📡 Stream disconnected. Re-establishing link...');
+    console.log('📡 Log tunnel dropped. Restoring link...');
     setTimeout(establishRpcConnection, 3000);
   });
 
