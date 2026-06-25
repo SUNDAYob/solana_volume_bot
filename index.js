@@ -13,7 +13,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    return res.end('Solana Strict Verification Engine: Active\n');
+    return res.end('Solana Track-Record Core V4: Active\n');
   }
 
   if (req.method === 'POST' && req.url === '/helius-stream') {
@@ -66,6 +66,7 @@ const server = http.createServer((req, res) => {
           (async () => {
             let marketData = null;
             let report = null;
+            let devHistoryData = null;
 
             // --- STEP 1: RETRY SCANS FOR TRACKER DATA (Up to 30 seconds max) ---
             for (let attempt = 1; attempt <= 3; attempt++) {
@@ -79,29 +80,60 @@ const server = http.createServer((req, res) => {
 
                 if (trackerRes.data && trackerRes.data.pools && trackerRes.data.pools.length > 0) {
                   marketData = trackerRes.data;
-                  break; // Valid market data found, break out early!
+                  break; 
                 }
               } catch (e) {
-                // Wait 10 seconds before checking again
                 await delay(10000);
               }
             }
 
-            // CRITICAL STOP: If the market pair is not fully indexed or has no active pools yet, DROP IT.
+            // If the market pair is not fully indexed or has no active pools yet, drop it.
             if (!marketData) {
-              console.log(`🛑 [FILTERED] Dropping token ${tokenMint.substring(0,6)} - Not indexed or no pool discovered yet.`);
+              console.log(`🛑 [FILTERED] Dropping token ${tokenMint.substring(0,6)} - Not indexed.`);
               return;
             }
 
             const volume24h = marketData.pools?.[0]?.volume?.h24 || 0;
-            
-            // CRITICAL STOP: If the volume is zero or placeholder, drop it.
             if (Number(volume24h) <= 0) {
               console.log(`🛑 [FILTERED] Dropping token ${tokenMint.substring(0,6)} - Active volume is $0.`);
               return;
             }
 
-            // --- STEP 2: FETCH RUGCHECK DETAILS ONLY FOR CONFIRMED TOKENS ---
+            const devAddress = marketData.creator || "Unknown Deployer";
+
+            // --- STEP 2: CALCULATE DEV WIN-RATE TRACK RECORD ---
+            let devReputationString = "New Dev Profile 👤";
+            
+            if (marketData.creator && process.env.SOLANA_TRACKER_API_KEY) {
+              try {
+                const devHistoryRes = await axios.get(`https://api.solanatracker.io/wallets/${devAddress}/history`, {
+                  headers: { 'x-api-key': process.env.SOLANA_TRACKER_API_KEY },
+                  timeout: 4000
+                });
+                
+                if (devHistoryRes.data && devHistoryRes.data.summary) {
+                  const summary = devHistoryRes.data.summary;
+                  const totalTokens = summary.totalTokensTraded || 0;
+                  
+                  // Track historical success by analyzing their overall profitable setups
+                  const totalWins = summary.totalWins || 0; 
+                  
+                  if (totalTokens > 0) {
+                    const winRate = Math.round((totalWins / totalTokens) * 100);
+                    
+                    if (winRate >= 60) {
+                      devReputationString = `Dev 60%+ Good Track Record 📈 (${winRate}% Wins over ${totalTokens} setups)`;
+                    } else {
+                      devReputationString = `Low Historical Track Record ⚠️ (${winRate}% Win-Rate)`;
+                    }
+                  }
+                }
+              } catch (err) {
+                console.log(`ℹ️ History retrieval fallback for wallet ${devAddress.substring(0,6)}`);
+              }
+            }
+
+            // --- STEP 3: FETCH RUGCHECK DETAILS ---
             try {
               const rcConfig = process.env.RUGCHECK_JWT ? {
                 headers: { 'Authorization': `Bearer ${process.env.RUGCHECK_JWT}` },
@@ -110,14 +142,10 @@ const server = http.createServer((req, res) => {
               
               const rcRes = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, rcConfig);
               if (rcRes.data) report = rcRes.data;
-            } catch (rcErr) {
-              console.log(`ℹ️ Optional security diagnostic skipped for ${tokenMint.substring(0,6)}`);
-            }
+            } catch (rcErr) {}
 
-            // --- STEP 3: EXTRACT AND VALIDATE COMPLETED FIELDS ---
-            const devAddress = marketData.creator || "Unknown Deployer";
+            // --- STEP 4: EXTRACT METRICS ---
             const whaleCount = marketData.events?.whales?.length || 0;
-            
             let hasLockedLiquidity = false;
             let canMintMore = false;
 
@@ -126,7 +154,7 @@ const server = http.createServer((req, res) => {
               canMintMore = report.risks?.some(r => r.name?.toLowerCase().includes('mint authority') || r.name?.toLowerCase().includes('mintable')) || false;
             }
 
-            // --- STEP 4: DISPATCH ONLY VALID METRICS TO TELEGRAM ---
+            // --- STEP 5: DISPATCH NOTIFICATION ---
             const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
             const dexScreenerLink = `https://dexscreener.com/solana/${tokenMint}`;
 
@@ -140,6 +168,7 @@ const server = http.createServer((req, res) => {
 ▶ <b>🛡️ AUDIT STATUS</b>
 • <b>Liquidity Pool:</b> ${hasLockedLiquidity ? 'Locked 🔒' : 'Active Trading 📊'}
 • <b>Mint Status:</b> ${canMintMore ? 'Warning (Mintable) ⚠️' : 'Renounced 🚫🖨️'}
+• <b>Dev Reputation:</b> <b>${devReputationString}</b>
 ────────────────────────
 ▶ <b>📊 LIVE MARKET METRICS</b>
 • <b>Current Volume Velocity:</b> $${Number(volume24h).toLocaleString()}
@@ -168,5 +197,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Strict Real-Time Filter Active on Port ${PORT}`);
+  console.log(`🚀 Track-Record Core V4 Live on Port ${PORT}`);
 });
