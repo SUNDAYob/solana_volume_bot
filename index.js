@@ -16,7 +16,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.get('/', (req, res) => {
-  res.status(200).send('Solana Tracker Core V5 Optimized: Online\n');
+  res.status(200).send('Solana Tracker Core V6 Secured: Online\n');
 });
 
 app.post('/helius-stream', async (req, res) => {
@@ -57,10 +57,10 @@ app.post('/helius-stream', async (req, res) => {
 
       console.log(`🎯 [POOL SEEN] Ingesting token: ${tokenMint}`);
 
-      // Safe isolated async processing background worker
+      // Safe isolated background async execution
       (async () => {
         try {
-          // Wait 45 seconds to give external databases a fair setup window
+          // Wait 45 seconds to let block indexers catch up across tracking platforms
           await delay(45000);
 
           let marketData = null;
@@ -79,10 +79,40 @@ app.post('/helius-stream', async (req, res) => {
             const rcRes = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, rcConfig);
             if (rcRes.data) report = rcRes.data;
           } catch (rcErr) {
-            console.log(`ℹ️ Rugcheck 404/Timeout skipped for ${tokenMint.substring(0,6)}`);
+            console.log(`ℹ️ Rugcheck data fetch skipped for ${tokenMint.substring(0,6)}`);
           }
 
-          // --- STEP 2: CONSERVATIVE SINGLE-CALL MARKET EXTRACTION ---
+          // --- STEP 2: METADATA ENGINE & DEEP SECURITY EVALUATION ---
+          let hasLockedLiquidity = false;
+          let canMintMore = false;
+          let securityScoreText = "Clean Pass ✅";
+          let dangerousRiskCount = 0;
+
+          if (report) {
+            hasLockedLiquidity = report.markets?.some(m => m.lpLocked === true || m.lpPercent === 100) || false;
+            canMintMore = report.risks?.some(r => r.name?.toLowerCase().includes('mint authority') || r.name?.toLowerCase().includes('mintable')) || false;
+            
+            // Loop through risk items to evaluate severity score levels
+            if (Array.isArray(report.risks)) {
+              report.risks.forEach(risk => {
+                const level = risk.level?.toLowerCase() || '';
+                if (level === 'danger' || level === 'critical') {
+                  dangerousRiskCount += 2;
+                } else if (level === 'warning' || level === 'medium') {
+                  dangerousRiskCount += 1;
+                }
+              });
+            }
+
+            // Determine strict security status thresholds
+            if (canMintMore || dangerousRiskCount >= 4) {
+              securityScoreText = "⚠️ DANGER / HIGH RISK";
+            } else if (dangerousRiskCount > 0 && dangerousRiskCount < 4) {
+              securityScoreText = "⚡ MODERATE RISK (Review Vulnerabilities)";
+            }
+          }
+
+          // --- STEP 3: SOLANA TRACKER MARKET METRICS ---
           if (process.env.SOLANA_TRACKER_API_KEY) {
             try {
               const trackerRes = await axios.get(`https://api.solanatracker.io/tokens/${tokenMint}`, {
@@ -96,13 +126,13 @@ app.post('/helius-stream', async (req, res) => {
                 if (marketData.creator) devAddress = marketData.creator;
               }
             } catch (e) {
-              console.log(`ℹ️ Solana Tracker unindexed (404) for ${tokenMint.substring(0,6)} - Dispatching with fallback metadata.`);
+              console.log(`ℹ️ Solana Tracker data pending for ${tokenMint.substring(0,6)}`);
             }
           }
 
           let devReputationString = "New Dev Profile 👤";
           
-          // --- STEP 3: OPTIONAL WALLET HISTORY CHECK ---
+          // --- STEP 4: WALLET EXPERIENCE RATINGS ---
           if (marketData && marketData.creator && process.env.SOLANA_TRACKER_API_KEY) {
             try {
               const devHistoryRes = await axios.get(`https://api.solanatracker.io/wallets/${devAddress}/history`, {
@@ -116,36 +146,29 @@ app.post('/helius-stream', async (req, res) => {
                 if (totalTokens > 0) {
                   const winRate = Math.round((totalWins / totalTokens) * 100);
                   devReputationString = winRate >= 60 
-                    ? `Dev 60%+ Good Track Record 📈 (${winRate}% Wins)` 
-                    : `Low Historical Track Record ⚠️ (${winRate}% Win-Rate)`;
+                    ? `Dev 60%+ Good Track Record 📈 (${winRate}% Wins over ${totalTokens} deployments)` 
+                    : `Low Historical Track Record ⚠️ (${winRate}% Win-Rate over ${totalTokens} tokens)`;
                 }
               }
             } catch (err) {}
           }
 
-          let hasLockedLiquidity = false;
-          let canMintMore = false;
-
-          if (report) {
-            hasLockedLiquidity = report.markets?.some(m => m.lpLocked === true || m.lpPercent === 100) || false;
-            canMintMore = report.risks?.some(r => r.name?.toLowerCase().includes('mint authority') || r.name?.toLowerCase().includes('mintable')) || false;
-          }
-
-          // --- STEP 4: TELEGRAM PACKAGING ---
+          // --- STEP 5: TELEGRAM ALERTS DISTRIBUTION WITH LIVE LINKS ---
           const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
           const dexScreenerLink = `https://dexscreener.com/solana/${tokenMint}`;
 
           const telegramAlert = `
-💎 <b>POOL METRICS DISCOVERED</b> 💎
+💎 <b>POOL METRICS SECURITY REPORT</b> 💎
 ────────────────────────
 ▶ <b>BLOCK METADATA</b>
 • <b>Token Contract:</b> <code>${tokenMint}</code>
 • <b>Dev Wallet:</b> <code>${devAddress}</code>
 ────────────────────────
-▶ <b>🛡️ AUDIT STATUS</b>
+▶ <b>🛡️ AUTOMATED SECURITY SCAN</b>
+• <b>Security Verdict:</b> <b>${securityScoreText}</b>
 • <b>Liquidity Pool:</b> ${hasLockedLiquidity ? 'Locked 🔒' : 'Active Trading 📊'}
 • <b>Mint Status:</b> ${canMintMore ? 'Warning (Mintable) ⚠️' : 'Renounced 🚫🖨️'}
-• <b>Dev Reputation:</b> <b>${devReputationString}</b>
+• <b>Dev Reputation:</b> <code>${devReputationString}</code>
 ────────────────────────
 ▶ <b>📊 LIVE MARKET METRICS</b>
 • <b>Current Volume Velocity:</b> ${volume24h}
@@ -165,16 +188,16 @@ app.post('/helius-stream', async (req, res) => {
                 disable_web_page_preview: true 
               });
             } catch (tgErr) {
-              console.log(`❌ Telegram Send Failure: ${tgErr.message}`);
+              console.log(`❌ Telegram Transmission Failure: ${tgErr.message}`);
             }
           }
         } catch (innerError) {
-          console.log(`❌ Core background worker error: ${innerError.message}`);
+          console.log(`❌ Core background runner fault: ${innerError.message}`);
         }
       })();
     }
   } catch (error) {
-    console.log(`Core stream parsing error: ${error.message}`);
+    console.log(`Core stream parser exception: ${error.message}`);
   }
 });
 
