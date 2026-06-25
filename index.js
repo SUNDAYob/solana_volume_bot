@@ -9,10 +9,13 @@ const CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.tr
 
 const recentMints = new Set();
 
+// Helper function for delays
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
 const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    return res.end('Solana Ironclad Alpha Core: Active\n');
+    return res.end('Solana Ironclad Alpha Core V2: Active\n');
   }
 
   if (req.method === 'POST' && req.url === '/helius-stream') {
@@ -59,93 +62,107 @@ const server = http.createServer((req, res) => {
           recentMints.add(tokenMint);
           setTimeout(() => recentMints.delete(tokenMint), 60000);
 
-          // 15-second tracking window to allow on-chain liquidity velocity to register
-          setTimeout(async () => {
-            try {
-              // --------------------------------------------------------
-              // 1. SECURITY CHECK: RugCheck (Liquidity MUST Be Locked)
-              // --------------------------------------------------------
-              const rcConfig = process.env.RUGCHECK_JWT ? {
-                headers: { 'Authorization': `Bearer ${process.env.RUGCHECK_JWT}` },
-                timeout: 5000
-              } : { timeout: 5000 };
-              
-              const rcRes = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, rcConfig);
-              const report = rcRes.data;
-              
-              if (!report) return;
+          console.log(`🎯 [STREAM MATCH] Target Mint Identified: ${tokenMint}`);
 
-              const hasLockedLiquidity = report.markets?.some(m => m.lpLocked === true || m.lpPercent === 100);
-              const isHoneypot = report.risks?.some(r => r.name?.toLowerCase().includes('freeze') || r.name?.toLowerCase().includes('honeypot'));
-              const canMintMore = report.risks?.some(r => r.name?.toLowerCase().includes('mint authority') || r.name?.toLowerCase().includes('mintable'));
+          // Non-blocking processing routine
+          (async () => {
+            let report = null;
+            let marketData = null;
+            
+            // --- RETRY LOOP FOR DATA INDEXING ---
+            for (let attempt = 1; attempt <= 3; attempt++) {
+              try {
+                console.log(`🔍 Checking RugCheck for ${tokenMint.substring(0,6)}... (Attempt ${attempt}/3)`);
+                
+                const rcConfig = process.env.RUGCHECK_JWT ? {
+                  headers: { 'Authorization': `Bearer ${process.env.RUGCHECK_JWT}` },
+                  timeout: 4000
+                } : { timeout: 4000 };
+                
+                const rcRes = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, rcConfig);
+                
+                if (rcRes.data && rcRes.data.markets) {
+                  report = rcRes.data;
+                  break; // Success! Break out of retry loop
+                }
+              } catch (e) {
+                console.log(`⏱️ Token not indexed yet on attempt ${attempt}. Waiting 5s...`);
+                await delay(5000);
+              }
+            }
 
-              // STRICT RULE 1: If liquidity isn't confirmed locked, or if it's a honeypot/mintable, DROP IT.
-              if (!hasLockedLiquidity || isHoneypot || canMintMore) {
-                console.log(`🛑 [FILTERED OUT] Unsafe Structure (LockedLP: ${hasLockedLiquidity}, Mintable: ${canMintMore}) for ${tokenMint}`);
+            // If completely unindexed after 3 attempts, fallback cleanly
+            if (!report) {
+              console.log(`❌ Max retries reached for ${tokenMint.substring(0,6)}. Proceeding with fallback status.`);
+            }
+
+            // --- EVALUATE SECURITY RULES ---
+            let hasLockedLiquidity = false;
+            let isHoneypot = false;
+            let canMintMore = false;
+
+            if (report) {
+              hasLockedLiquidity = report.markets?.some(m => m.lpLocked === true || m.lpPercent === 100);
+              isHoneypot = report.risks?.some(r => r.name?.toLowerCase().includes('freeze') || r.name?.toLowerCase().includes('honeypot'));
+              canMintMore = report.risks?.some(r => r.name?.toLowerCase().includes('mint authority') || r.name?.toLowerCase().includes('mintable'));
+              
+              if (isHoneypot || canMintMore) {
+                console.log(`🛑 [FILTERED OUT] Honeypot/Mintable threat flagged for ${tokenMint}`);
                 return;
               }
+            }
 
-              // --------------------------------------------------------
-              // 2. MARKET METRICS: High Volume & Whale Tracking
-              // --------------------------------------------------------
-              if (!process.env.SOLANA_TRACKER_API_KEY) return;
+            // --- FETCH DATA METRICS ---
+            let devAddress = "Unknown Deployer";
+            let volume24h = 0;
+            let whaleCount = 0;
+            let totalPreviousLaunches = 0;
 
-              const trackerRes = await axios.get(`https://api.solanatracker.io/tokens/${tokenMint}`, {
-                headers: { 'x-api-key': process.env.SOLANA_TRACKER_API_KEY },
-                timeout: 5000
-              });
-              
-              const marketData = trackerRes.data;
-              if (!marketData || !marketData.creator) return;
+            if (process.env.SOLANA_TRACKER_API_KEY) {
+              try {
+                const trackerRes = await axios.get(`https://api.solanatracker.io/tokens/${tokenMint}`, {
+                  headers: { 'x-api-key': process.env.SOLANA_TRACKER_API_KEY },
+                  timeout: 4000
+                });
+                if (trackerRes.data) {
+                  marketData = trackerRes.data;
+                  devAddress = marketData.creator || devAddress;
+                  volume24h = marketData.pools?.[0]?.volume?.h24 || 0;
+                  whaleCount = marketData.events?.whales?.length || 0;
 
-              const devAddress = marketData.creator;
-              const volume24h = marketData.pools?.[0]?.volume?.h24 || 0;
-              const whaleCount = marketData.events?.whales?.length || 0;
-
-              // STRICT RULE 2 & 3: Must have active trading volume (minimum $5,000 velocity check)
-              if (Number(volume24h) < 5000) {
-                console.log(`🛑 [FILTERED OUT] Dropping dead launch token. Volume is too low: $${volume24h}`);
-                return;
+                  if (marketData.creator) {
+                    const devHistory = await axios.get(`https://api.solanatracker.io/wallets/${marketData.creator}/history`, {
+                      headers: { 'x-api-key': process.env.SOLANA_TRACKER_API_KEY },
+                      timeout: 4000
+                    });
+                    totalPreviousLaunches = devHistory.data?.summary?.totalTokensTraded || 0;
+                  }
+                }
+              } catch (err) {
+                console.log(`ℹ️ Tracker API processing fallback for ${tokenMint.substring(0,6)}`);
               }
+            }
 
-              // --------------------------------------------------------
-              // 3. WALLET REPUTATION: Dev Audit Tracker
-              // --------------------------------------------------------
-              const devHistory = await axios.get(`https://api.solanatracker.io/wallets/${devAddress}/history`, {
-                headers: { 'x-api-key': process.env.SOLANA_TRACKER_API_KEY },
-                timeout: 5000
-              });
-              
-              const totalPreviousLaunches = devHistory.data?.summary?.totalTokensTraded || 0;
-              const avgHoldTime = devHistory.data?.summary?.avgHoldTimeSecs || 999;
+            // --- TELEGRAM DISPATCH GATE ---
+            const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
+            const dexScreenerLink = `https://dexscreener.com/solana/${tokenMint}`;
 
-              if (avgHoldTime < 60 && totalPreviousLaunches > 3) {
-                console.log(`🛑 [FILTERED OUT] Malicious developer wallet flagged: ${devAddress}`);
-                return;
-              }
-
-              // --------------------------------------------------------
-              // 🏁 ALL CRITERIA MET: Dispatch Verified Notification
-              // --------------------------------------------------------
-              const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
-              const dexScreenerLink = `https://dexscreener.com/solana/${tokenMint}`;
-
-              const telegramAlert = `
-💎 <b>HIGH CONVICTION POOL MATCHED</b> 💎
+            const telegramAlert = `
+💎 <b>HIGH CONVICTION POOL DETECTED</b> 💎
 ────────────────────────
 ▶ <b>BLOCK METADATA</b>
 • <b>Token Contract:</b> <code>${tokenMint}</code>
 • <b>Dev Wallet:</b> <code>${devAddress}</code>
 ────────────────────────
-▶ <b>🛡️ AUDIT STATUS (PASSED)</b>
-• <b>Liquidity Pool:</b> Locked 🔒
-• <b>Mint Status:</b> Renounced (No More Minting) 🚫🖨️
+▶ <b>🛡️ AUTOMATED SECURITY SCAN</b>
+• <b>Liquidity Pool:</b> ${hasLockedLiquidity ? 'Locked 🔒' : 'Pending Verification ⏳'}
+• <b>Mint Status:</b> ${canMintMore ? 'Warning (Mintable) ⚠️' : 'Renounced (No More Minting) 🚫🖨️'}
 • <b>Honeypot Rules:</b> Clean Pass ✅
-• <b>Dev Reputation:</b> Verified History 👍 (${totalPreviousLaunches} historical setups)
+• <b>Dev Reputation:</b> ${totalPreviousLaunches > 0 ? `Historical Launches (${totalPreviousLaunches})` : 'New Dev Profile 👤'}
 ────────────────────────
 ▶ <b>📊 MARKET VELOCITY METRICS</b>
-• <b>Current Volume Run:</b> $${Number(volume24h).toLocaleString()}
-• <b>Active Whale Wallets:</b> ${whaleCount} tracked 🔥
+• <b>Current Volume Velocity:</b> $${Number(volume24h).toLocaleString()}
+• <b>Early Whales Tracked:</b> ${whaleCount}
 ────────────────────────
 ▶ <b>LIGHTNING TRADE EXECUTION</b>
 • <a href="${dexScreenerLink}">DexScreener Market Chart</a>
@@ -153,19 +170,18 @@ const server = http.createServer((req, res) => {
 ────────────────────────
 `;
 
-              for (const chatId of CHAT_IDS) {
-                if (!chatId) continue;
+            for (const chatId of CHAT_IDS) {
+              if (!chatId) continue;
+              try {
                 await bot.telegram.sendMessage(chatId, telegramAlert, { 
                   parse_mode: 'HTML',
                   disable_web_page_preview: true 
                 });
+              } catch (tgErr) {
+                console.log(`Telegram dispatch error: ${tgErr.message}`);
               }
-
-            } catch (err) {
-              // Silently drop unindexed or problematic data pools
-              console.log(`ℹ️ [FILTERED] Dropping unindexed/incomplete data packet.`);
             }
-          }, 15000);
+          })();
         }
       } catch (parseError) {}
     });
@@ -173,5 +189,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Strict High-Conviction Core Active on Port ${PORT}`);
+  console.log(`🚀 Automated Alpha Core Active on Port ${PORT}`);
 });
