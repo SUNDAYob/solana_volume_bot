@@ -15,13 +15,14 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Core Health Route for Render Port Verification
+// Vital health checkpoint for Render's firewall scanner
 app.get('/', (req, res) => {
   res.status(200).send('Solana Track-Record Core V4 (Express): Online\n');
 });
 
-// Helius Webhook Receiver
+// Helius Webhook Ingestion Receiver
 app.post('/helius-stream', async (req, res) => {
+  // Acknowledge the payload immediately to avoid webhook dropouts
   res.status(200).send('OK');
 
   try {
@@ -59,98 +60,104 @@ app.post('/helius-stream', async (req, res) => {
 
       console.log(`🎯 [POOL SEEN] Analyzing mint: ${tokenMint}`);
 
-      // Run background scanner filters
+      // Process metadata calculations safely inside a protected context
       (async () => {
-        let marketData = null;
-        let report = null;
+        try {
+          let marketData = null;
+          let report = null;
 
-        // --- STEP 1: POOL INDEX SCAN ---
-        for (let attempt = 1; attempt <= 3; attempt++) {
-          try {
-            if (!process.env.SOLANA_TRACKER_API_KEY) return;
-            
-            const trackerRes = await axios.get(`https://api.solanatracker.io/tokens/${tokenMint}`, {
-              headers: { 'x-api-key': process.env.SOLANA_TRACKER_API_KEY },
-              timeout: 4000
-            });
-
-            if (trackerRes.data && trackerRes.data.pools && trackerRes.data.pools.length > 0) {
-              marketData = trackerRes.data;
-              break; 
-            }
-          } catch (e) {
-            await delay(10000);
-          }
-        }
-
-        // Drop missing or unindexed pool links immediately
-        if (!marketData) {
-          console.log(`🛑 [FILTERED] Dropping token ${tokenMint.substring(0,6)} - Not indexed yet.`);
-          return;
-        }
-
-        const volume24h = marketData.pools?.[0]?.volume?.h24 || 0;
-        if (Number(volume24h) <= 0) {
-          console.log(`🛑 [FILTERED] Dropping token ${tokenMint.substring(0,6)} - Volume is $0.`);
-          return;
-        }
-
-        const devAddress = marketData.creator || "Unknown Deployer";
-
-        // --- STEP 2: PARSE REPUTATION HISTORY WITH 60% SUCCESS METRIC ---
-        let devReputationString = "New Dev Profile 👤";
-        
-        if (marketData.creator && process.env.SOLANA_TRACKER_API_KEY) {
-          try {
-            const devHistoryRes = await axios.get(`https://api.solanatracker.io/wallets/${devAddress}/history`, {
-              headers: { 'x-api-key': process.env.SOLANA_TRACKER_API_KEY },
-              timeout: 4000
-            });
-            
-            if (devHistoryRes.data && devHistoryRes.data.summary) {
-              const summary = devHistoryRes.data.summary;
-              const totalTokens = summary.totalTokensTraded || 0;
-              const totalWins = summary.totalWins || 0; 
+          // --- STEP 1: SOLANA TRACKER API RETRY TUNNEL ---
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              if (!process.env.SOLANA_TRACKER_API_KEY) {
+                console.log("❌ Missing SOLANA_TRACKER_API_KEY in environment variables!");
+                return;
+              }
               
-              if (totalTokens > 0) {
-                const winRate = Math.round((totalWins / totalTokens) * 100);
-                if (winRate >= 60) {
-                  devReputationString = `Dev 60%+ Good Track Record 📈 (${winRate}% Wins over ${totalTokens} setups)`;
-                } else {
-                  devReputationString = `Low Historical Track Record ⚠️ (${winRate}% Win-Rate)`;
+              const trackerRes = await axios.get(`https://api.solanatracker.io/tokens/${tokenMint}`, {
+                headers: { 'x-api-key': process.env.SOLANA_TRACKER_API_KEY },
+                timeout: 5000
+              });
+
+              if (trackerRes.data && trackerRes.data.pools && trackerRes.data.pools.length > 0) {
+                marketData = trackerRes.data;
+                break; 
+              }
+            } catch (e) {
+              console.log(`⚠️ Tracker Token API Attempt ${attempt} failed for ${tokenMint.substring(0,6)}: ${e.message}`);
+              if (attempt < 3) await delay(8000);
+            }
+          }
+
+          // Strict filter criteria: drop if completely unindexed or data payload missing
+          if (!marketData) {
+            console.log(`🛑 [FILTERED] Dropping ${tokenMint.substring(0,6)} - Token metadata not available yet.`);
+            return;
+          }
+
+          const volume24h = marketData.pools?.[0]?.volume?.h24 || 0;
+          if (Number(volume24h) <= 0) {
+            console.log(`🛑 [FILTERED] Dropping ${tokenMint.substring(0,6)} - Zero trading volume detected.`);
+            return;
+          }
+
+          const devAddress = marketData.creator || "Unknown Deployer";
+          let devReputationString = "New Dev Profile 👤";
+          
+          // --- STEP 2: WALLET WIN-RATE EXTRACTION ENGINE ---
+          if (marketData.creator && process.env.SOLANA_TRACKER_API_KEY) {
+            try {
+              const devHistoryRes = await axios.get(`https://api.solanatracker.io/wallets/${devAddress}/history`, {
+                headers: { 'x-api-key': process.env.SOLANA_TRACKER_API_KEY },
+                timeout: 5000
+              });
+              
+              if (devHistoryRes.data && devHistoryRes.data.summary) {
+                const summary = devHistoryRes.data.summary;
+                const totalTokens = summary.totalTokensTraded || 0;
+                const totalWins = summary.totalWins || 0; 
+                
+                if (totalTokens > 0) {
+                  const winRate = Math.round((totalWins / totalTokens) * 100);
+                  if (winRate >= 60) {
+                    devReputationString = `Dev 60%+ Good Track Record 📈 (${winRate}% Wins over ${totalTokens} setups)`;
+                  } else {
+                    devReputationString = `Low Historical Track Record ⚠️ (${winRate}% Win-Rate)`;
+                  }
                 }
               }
+            } catch (err) {
+              console.log(`ℹ️ Tracker History API omitted for ${devAddress.substring(0,6)}: ${err.message}`);
             }
-          } catch (err) {
-            console.log(`ℹ️ History tracker skipped for ${devAddress.substring(0,6)}`);
           }
-        }
 
-        // --- STEP 3: RUN RUGCHECK AUDIT ---
-        try {
-          const rcConfig = process.env.RUGCHECK_JWT ? {
-            headers: { 'Authorization': `Bearer ${process.env.RUGCHECK_JWT}` },
-            timeout: 4000
-          } : { timeout: 4000 };
-          
-          const rcRes = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, rcConfig);
-          if (rcRes.data) report = rcRes.data;
-        } catch (rcErr) {}
+          // --- STEP 3: SECURITY DATA RECOVERY (RUGCHECK) ---
+          try {
+            const rcConfig = process.env.RUGCHECK_JWT ? {
+              headers: { 'Authorization': `Bearer ${process.env.RUGCHECK_JWT}` },
+              timeout: 5000
+            } : { timeout: 5000 };
+            
+            const rcRes = await axios.get(`https://api.rugcheck.xyz/v1/tokens/${tokenMint}/report`, rcConfig);
+            if (rcRes.data) report = rcRes.data;
+          } catch (rcErr) {
+            console.log(`ℹ️ Rugcheck API omitted for ${tokenMint.substring(0,6)}`);
+          }
 
-        const whaleCount = marketData.events?.whales?.length || 0;
-        let hasLockedLiquidity = false;
-        let canMintMore = false;
+          const whaleCount = marketData.events?.whales?.length || 0;
+          let hasLockedLiquidity = false;
+          let canMintMore = false;
 
-        if (report) {
-          hasLockedLiquidity = report.markets?.some(m => m.lpLocked === true || m.lpPercent === 100) || false;
-          canMintMore = report.risks?.some(r => r.name?.toLowerCase().includes('mint authority') || r.name?.toLowerCase().includes('mintable')) || false;
-        }
+          if (report) {
+            hasLockedLiquidity = report.markets?.some(m => m.lpLocked === true || m.lpPercent === 100) || false;
+            canMintMore = report.risks?.some(r => r.name?.toLowerCase().includes('mint authority') || r.name?.toLowerCase().includes('mintable')) || false;
+          }
 
-        // --- STEP 4: DELIVER ALERT PACKAGE ---
-        const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
-        const dexScreenerLink = `https://dexscreener.com/solana/${tokenMint}`;
+          // --- STEP 4: TELEGRAM NOTIFICATION BROADCAST ---
+          const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
+          const dexScreenerLink = `https://dexscreener.com/solana/${tokenMint}`;
 
-        const telegramAlert = `
+          const telegramAlert = `
 💎 <b>HIGH CONVICTION POOL MATCHED</b> 💎
 ────────────────────────
 ▶ <b>BLOCK METADATA</b>
@@ -172,18 +179,23 @@ app.post('/helius-stream', async (req, res) => {
 ────────────────────────
 `;
 
-        for (const chatId of CHAT_IDS) {
-          if (!chatId) continue;
-          try {
-            await bot.telegram.sendMessage(chatId, telegramAlert, { 
-              parse_mode: 'HTML',
-              disable_web_page_preview: true 
-                });
-              } catch (tgErr) {}
+          for (const chatId of CHAT_IDS) {
+            if (!chatId) continue;
+            try {
+              await bot.telegram.sendMessage(chatId, telegramAlert, { 
+                parse_mode: 'HTML',
+                disable_web_page_preview: true 
+              });
+            } catch (tgErr) {
+              console.log(`❌ Telegram Dispatch Failed for chat ${chatId}: ${tgErr.message}`);
             }
-          })();
+          }
+        } catch (innerError) {
+          console.log(`❌ Critical error in background tracking runtime: ${innerError.message}`);
         }
-    } catch (error) {
+      })();
+    }
+  } catch (error) {
     console.log(`Core stream parsing error: ${error.message}`);
   }
 });
