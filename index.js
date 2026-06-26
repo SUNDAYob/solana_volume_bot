@@ -15,8 +15,16 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 app.use(express.json());
 
 app.get('/', (req, res) => {
-  res.status(200).send('⚙️ Institutional GMGN Dynamic Normalization Engine: Active\n');
+  res.status(200).send('⚙️ GMGN Professional Resilient Backoff Sniper: Active\n');
 });
+
+// Deep Helper to safely read fluctuating API properties
+const getProp = (obj, keys, defaultVal = 0) => {
+  for (const key of keys) {
+    if (obj && obj[key] !== undefined && obj[key] !== null) return obj[key];
+  }
+  return defaultVal;
+};
 
 app.post('/helius-stream', async (req, res) => {
   res.status(200).send('OK'); 
@@ -54,13 +62,19 @@ app.post('/helius-stream', async (req, res) => {
       recentMints.add(tokenMint);
       setTimeout(() => recentMints.delete(tokenMint), 60000); 
 
-      // Run parallel tracking thread
+      // Fire-and-forget processing thread
       (async () => {
-        try {
-          // ⏱️ Allow the token pool 6 seconds to register on indexing clusters
-          await delay(6000);
+        let rawData = null;
+        let attempts = 0;
+        const maxAttempts = 5;
+        // Exponential waiting steps: 3s, 6s, 12s, 24s... giving indexing nodes time to catch up
+        let backoffDelay = 3000; 
 
-          let rawData = null;
+        console.log(`[INGESTED] Evaluating block entry for token: ${tokenMint.slice(0,6)}...`);
+
+        while (attempts < maxAttempts && !rawData) {
+          attempts++;
+          
           const apiEndpoints = [
             `https://gmgn.ai/defi/quotation/v1/tokens/sol/${tokenMint}`,
             `https://gmgn.ai/api/v1/token_info/sol/${tokenMint}`
@@ -73,69 +87,73 @@ app.post('/helius-stream', async (req, res) => {
                   'Authorization': `Bearer ${process.env.GMGN_API_KEY || ''}`,
                   'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
                 },
-                timeout: 3500 
+                timeout: 3000 
               });
               if (res.data && (res.data.data || res.data.token)) {
                 rawData = res.data.data || res.data.token;
                 break;
               }
-            } catch (err) {}
+            } catch (err) {
+              // Endpoint connection hiccup or 404, fallback to next array item
+            }
           }
 
-          if (!rawData) return;
-
-          // 🧠 INTERNALLY MAPPED DYNAMIC DATA NORMALIZATION LAYER
-          const getProp = (obj, keys, defaultVal = 0) => {
-            for (const key of keys) {
-              if (obj[key] !== undefined && obj[key] !== null) return obj[key];
+          if (!rawData) {
+            if (attempts < maxAttempts) {
+              console.log(`↳ ⏳ Unindexed on Tracker yet. Retrying in ${backoffDelay / 1000}s... (${tokenMint.slice(0,6)})`);
+              await delay(backoffDelay);
+              backoffDelay *= 2; // Double the sleep period for the next run
+            } else {
+              console.log(`↳ ❌ Dropped: Token indexing timed out on GMGN nodes (${tokenMint.slice(0,6)})`);
+              return;
             }
-            return defaultVal;
-          };
+          }
+        }
 
-          // 🛡️ 1. SECURITY PARAMETERS
-          const devRugHistoryCount = Number(getProp(rawData, ['creator_rug_count', 'dev_rug_count', 'rug_count', 'creator_rugs'], 0));
-          
-          const isHoneypotVal = getProp(rawData, ['is_honeypot', 'honeypot_risk', 'honeypot'], 'no');
-          const isHoneypot = isHoneypotVal === 'yes' || isHoneypotVal === true || isHoneypotVal === 1;
+        if (!rawData) return;
 
-          // Liquidity Check: Fallback logic flags true if explicitly locked, burned, or if the burn percentage hits 100
-          const lpBurnRatio = Number(getProp(rawData, ['burn_ratio', 'lp_burn_ratio', 'burn_percentage'], 0));
-          const isLpLocked = rawData.lp_locked === true || rawData.lp_burned === true || rawData.liquidity_locked === 1 || lpBurnRatio === 100;
+        // 🛡️ SECURITY AUDIT MATRIX
+        const devRugHistoryCount = Number(getProp(rawData, ['creator_rug_count', 'dev_rug_count', 'rug_count', 'creator_rugs'], 0));
+        
+        const isHoneypotVal = getProp(rawData, ['is_honeypot', 'honeypot_risk', 'honeypot'], 'no');
+        const isHoneypot = isHoneypotVal === 'yes' || isHoneypotVal === true || isHoneypotVal === 1;
 
-          const isMintRenounced = rawData.renounced_mint === true || rawData.is_renounced === 1 || rawData.mint_renounced === 1 || rawData.renounce_mint === true;
+        const lpBurnRatio = Number(getProp(rawData, ['burn_ratio', 'lp_burn_ratio', 'burn_percentage'], 0));
+        const isLpLocked = rawData.lp_locked === true || rawData.lp_burned === true || rawData.liquidity_locked === 1 || lpBurnRatio === 100;
 
-          // --- FIREWALL SANCTIONS ---
-          if (devRugHistoryCount > 0) return; 
-          if (isHoneypot) return;
-          if (!isLpLocked) return; 
+        const isMintRenounced = rawData.renounced_mint === true || rawData.is_renounced === 1 || rawData.mint_renounced === 1 || rawData.renounce_mint === true;
 
-          // 👤 2. DEVELOPER INFRASTRUCTURE MAPPING
-          const devAddress = rawData.creator || rawData.dev_address || rawData.creator_address || "Unknown Address";
-          const totalDevLaunches = Number(getProp(rawData, ['creator_token_count', 'dev_token_count', 'total_launches'], 0));
+        if (devRugHistoryCount > 0) return; 
+        if (isHoneypot) return;
+        if (!isLpLocked) return; 
 
-          // 📈 3. REALTIME TRADE VOLUME METRICS
-          const volume24h = Number(getProp(rawData, ['volume_24h', 'volume', 'usd_volume_24h'], 0));
-          const volume5m = Number(getProp(rawData, ['volume_5m', 'usd_volume_5m'], 0));
-          const volume1h = Number(getProp(rawData, ['volume_1h', 'usd_volume_1h'], 0));
-          
-          // Match any active structural trade volume threshold to verify high-volume breakout status
-          if (volume24h < 15000 && volume5m < 2000 && volume1h < 5000) return;
+        // 👤 DEVELOPER INFRASTRUCTURE 
+        const devAddress = rawData.creator || rawData.dev_address || rawData.creator_address || "Unknown";
+        const totalDevLaunches = Number(getProp(rawData, ['creator_token_count', 'dev_token_count', 'total_launches'], 0));
 
-          // 🐋 4. WHALES & SMART MONEY ASSIGNMENT
-          const whaleBuyCount = Number(getProp(rawData, ['whale_buy_count', 'whales_tracked', 'smart_money_buy_count', 'whale_buys'], 0));
-          const largeTxCount = Number(getProp(rawData, ['large_transaction_count', 'buys', 'swaps', 'total_txs'], 0));
-          
-          if (whaleBuyCount < 1 && largeTxCount < 2) return;
+        // 📈 REALTIME TRADE VOLUME VELOCITY
+        const volume24h = Number(getProp(rawData, ['volume_24h', 'volume', 'usd_volume_24h'], 0));
+        const volume1h = Number(getProp(rawData, ['volume_1h', 'usd_volume_1h'], 0));
+        const volume5m = Number(getProp(rawData, ['volume_5m', 'usd_volume_5m'], 0));
+        
+        // Ensure the token has real market traction before firing notification
+        if (volume24h < 15000 && volume5m < 2000 && volume1h < 5000) return;
 
-          // ⚙️ EXTRACTING COSMETIC DETAILS FOR OUTPUT
-          const tokenName = rawData.name || 'Solana Token';
-          const tokenSymbol = rawData.symbol || 'SOL';
-          const liquidityUsd = Number(getProp(rawData, ['liquidity', 'pool_liquidity', 'total_liquidity', 'liquidity_usd'], 0));
+        // 🐋 WHALES & SMART MONEY RECONNAISSANCE
+        const whaleBuyCount = Number(getProp(rawData, ['whale_buy_count', 'whales_tracked', 'smart_money_buy_count', 'whale_buys'], 0));
+        const largeTxCount = Number(getProp(rawData, ['large_transaction_count', 'buys', 'swaps', 'total_txs'], 0));
+        
+        if (whaleBuyCount < 1 && largeTxCount < 2) return;
 
-          const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
-          const gmgnMobileLink = `https://gmgn.ai/sol/token/${tokenMint}`;
+        // BUILD AND SEND TELEGRAM PAYLOAD
+        const tokenName = rawData.name || 'Solana Token';
+        const tokenSymbol = rawData.symbol || 'SOL';
+        const liquidityUsd = Number(getProp(rawData, ['liquidity', 'pool_liquidity', 'total_liquidity', 'liquidity_usd'], 0));
 
-          const telegramAlert = `
+        const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
+        const gmgnMobileLink = `https://gmgn.ai/sol/token/${tokenMint}`;
+
+        const telegramAlert = `
 🚨 <b>FAST ALPHAS SNIPER MATCH</b> 🚨
 ────────────────────────
 ▶ <b>TOKEN PROFILE</b>
@@ -162,21 +180,20 @@ app.post('/helius-stream', async (req, res) => {
 ────────────────────────
 `;
 
-          for (const chatId of CHAT_IDS) {
-            if (!chatId) continue;
-            try {
-              await bot.telegram.sendMessage(chatId, telegramAlert, { 
-                parse_mode: 'HTML',
-                disable_web_page_preview: true 
-              });
-            } catch (tgErr) {}
-          }
-        } catch (innerError) {}
+        for (const chatId of CHAT_IDS) {
+          if (!chatId) continue;
+          try {
+            await bot.telegram.sendMessage(chatId, telegramAlert, { 
+              parse_mode: 'HTML',
+              disable_web_page_preview: true 
+            });
+          } catch (tgErr) {}
+        }
       })();
     }
   } catch (error) {}
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Resilient GMGN Normalization Snipping Cluster Running on Port ${PORT}`);
+  console.log(`🚀 Resilient Backoff GMGN Snipping Core Running on Port ${PORT}`);
 });
