@@ -13,15 +13,16 @@ const CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.tr
 const recentMints = new Set();
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-// Connect directly to the Solana Mainnet Blockchain
-const RPC_ENDPOINT = 'https://api.mainnet-beta.solana.com';
-const solanaConnection = new Connection(RPC_ENDPOINT, 'confirmed');
+const RPC_ENDPOINT = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+const solanaConnection = new Connection(RPC_ENDPOINT, {
+  commitment: 'confirmed',
+  wsEndpoint: RPC_ENDPOINT.replace('https://', 'wss://')
+});
 
-// Raydium Liquidity Pool V4 Address
 const RAYDIUM_POOL_V4 = new PublicKey('675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8');
 
 app.use(express.json());
-app.get('/', (req, res) => res.status(200).send('🛡️ Pure Direct On-Chain Listener Active\n'));
+app.get('/', (req, res) => res.status(200).send('🛡️ Ultra-Strict On-Chain Guard Active\n'));
 
 const getNestedProp = (obj, paths, defaultVal = 0) => {
   for (const path of paths) {
@@ -30,24 +31,18 @@ const getNestedProp = (obj, paths, defaultVal = 0) => {
   return defaultVal;
 };
 
-// 🌟 THE DIRECT LOG LISTENER (No webhooks needed!)
 console.log('📡 Subscribing directly to Solana live logs...');
 solanaConnection.onLogs(
   RAYDIUM_POOL_V4,
   async (logs) => {
     try {
-      // Filter for pool initialization instructions
       const isNewPool = logs.logs.some(log => log.includes('initialize2'));
       if (!isNewPool) return;
 
-      console.log(`\n⚡ [ON-CHAIN DETECTED] New pair tx: ${logs.signature}`);
-      console.log(`⏳ Holding data stream for 30 seconds to allow GMGN & Dexscreener indexing...`);
-
-      // Let the tx details propagate asynchronously
       (async () => {
-        await delay(30000);
+        // ⏱️ Hold for 35 seconds to allow deep holder distribution API indexing
+        await delay(35000);
 
-        // Fetch transaction details to extract the token mint
         const txDetails = await solanaConnection.getParsedTransaction(logs.signature, {
           maxSupportedTransactionVersion: 0,
           commitment: 'confirmed'
@@ -55,7 +50,6 @@ solanaConnection.onLogs(
 
         if (!txDetails || !txDetails.meta || !txDetails.meta.postTokenBalances) return;
 
-        // Find the newly launched token mint (ignore wrapped SOL)
         const tokenMarket = txDetails.meta.postTokenBalances.find(balance => 
           balance.mint !== 'So11111111111111111111111111111111111111112'
         );
@@ -67,50 +61,54 @@ solanaConnection.onLogs(
         recentMints.add(tokenMint);
         setTimeout(() => recentMints.delete(tokenMint), 60000);
 
-        console.log(`🚀 [30s DELAY COMPLETE] Querying APIs for: ${tokenMint}`);
-
         let gmgnData = null;
         let dexscreenerData = null;
 
-        // 🛡️ SECURITY QUERY 1: GMGN
         try {
           const gmgnResponse = await axios.get(`https://gmgn.ai/api/v1/token_security/sol/${tokenMint}`, {
-            headers: { 'User-Agent': 'Mozilla/5.0' },
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
             timeout: 6000
           });
           if (gmgnResponse.data && gmgnResponse.data.data) gmgnData = gmgnResponse.data.data;
-        } catch (err) {
-          console.log(`↳ ⚠️ GMGN Fetch Issue.`);
-        }
+        } catch (err) {}
 
-        // 🛡️ SECURITY QUERY 2: Dexscreener
         try {
           const dexResponse = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${tokenMint}`, { timeout: 4000 });
           if (dexResponse.data && dexResponse.data.pairs) dexscreenerData = dexResponse.data.pairs[0];
-        } catch (err) {
-          console.log(`↳ ⚠️ Dexscreener Fetch Issue.`);
-        }
+        } catch (err) {}
 
-        if (!gmgnData && !dexscreenerData) {
-          console.log(`↳ ❌ [DROP] Missing metrics from tracking networks.`);
-          return;
-        }
+        if (!gmgnData) return;
 
-        const rugCount = gmgnData ? Number(getNestedProp(gmgnData, ['creator_rug_count', 'dev_rug_count'], 0)) : 0;
-        const top10Rate = gmgnData ? parseFloat(getNestedProp(gmgnData, ['top_10_holder_rate', 'holder_concentration'], 0)) * 100 : 0;
-        const isHoneypot = gmgnData ? (gmgnData.is_honeypot === 1 || gmgnData.is_honeypot === true) : false;
-        const mintRenounced = gmgnData ? (gmgnData.mint_has_not_renounced === 0 || gmgnData.is_mintable === false) : true;
+        // --- NEW ULTRA-STRICT SECURITY PARSING ---
+        const rugCount = Number(getNestedProp(gmgnData, ['creator_rug_count', 'dev_rug_count'], 0));
+        const top10Rate = parseFloat(getNestedProp(gmgnData, ['top_10_holder_rate', 'holder_concentration'], 0)) * 100;
+        const isHoneypot = gmgnData.is_honeypot === 1 || gmgnData.is_honeypot === true;
         
-        const liquidity = dexscreenerData ? Number(getNestedProp(dexscreenerData, ['liquidity', 'usd'], 0)) : 0;
-        const tokenSymbol = dexscreenerData ? dexscreenerData.baseToken.symbol : (gmgnData ? gmgnData.symbol : 'TOKEN');
-        const tokenName = dexscreenerData ? dexscreenerData.baseToken.name : (gmgnData ? gmgnData.name : 'Solana Asset');
+        // 🔥 CRITICAL NEW FILTER: How many total coins has this dev farmed out?
+        const totalCreatedCount = Number(getNestedProp(gmgnData, ['token_created_count', 'creator_token_count'], 0));
 
-        if (rugCount > 1 || top10Rate > 35 || isHoneypot) {
-          console.log(`↳ ❌ [FILTERED] Failed security metric parameters.`);
+        // Evaluate security thresholds strictly
+        if (rugCount > 0) {
+          console.log(`❌ [FILTERED] Rug history detected.`);
+          return;
+        }
+        if (top10Rate > 30) {
+          console.log(`❌ [FILTERED] Critical insider bundling risk: Top 10 control ${top10Rate.toFixed(1)}%`);
+          return;
+        }
+        if (isHoneypot) {
+          console.log(`❌ [FILTERED] Honeypot detected.`);
+          return;
+        }
+        // If they have dropped more than 3 tokens in the past, they are a professional coin mill. Blocked!
+        if (totalCreatedCount > 3) {
+          console.log(`❌ [FILTERED] Serial deployer blocked. Total created: ${totalCreatedCount}`);
           return;
         }
 
-        console.log(`🟩 [SECURITY PASSED] Pushing alert for ${tokenSymbol}`);
+        const liquidity = dexscreenerData ? Number(getNestedProp(dexscreenerData, ['liquidity', 'usd'], 0)) : 0;
+        const tokenSymbol = dexscreenerData ? dexscreenerData.baseToken.symbol : gmgnData.symbol;
+        const tokenName = dexscreenerData ? dexscreenerData.baseToken.name : gmgnData.name;
 
         const alertMessage = `
 🛡️ <b>VERIFIED SECURE LAUNCH</b> 🛡️
@@ -119,14 +117,10 @@ solanaConnection.onLogs(
 • <b>Contract:</b> <code>${tokenMint}</code>
 ────────────────────────
 ▶ <b>SECURITY AUDIT METRICS</b>
-• <b>Dev Rug History:</b> ${rugCount === 0 ? '✅ Clean (0)' : `⚠️ ${rugCount} Rugs`}
-• <b>Top 10 Supply Rate:</b> ${top10Rate > 0 ? `${top10Rate.toFixed(1)}%` : '✅ Safe Dynamic'}
-• <b>Mint Authority:</b> ${mintRenounced ? '✅ Renounced' : '🚨 Active'}
-• <b>Liquidity Depth:</b> ${liquidity > 0 ? `$${liquidity.toLocaleString()}` : 'Indexing Pool...'}
-────────────────────────
-▶ <b>SECURE ACTION HUB</b>
-• <a href="https://gmgn.ai/sol/token/${tokenMint}">📊 GMGN Safety Terminal</a>
-• <a href="https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}">⚔️ Trade Instant (Trojan Bot)</a>
+• <b>Dev Profile:</b> Clean History
+• <b>Total Dev Coins:</b> ${totalCreatedCount} Created
+• <b>Top 10 Supply Rate:</b> ${top10Rate.toFixed(1)}%
+• <b>Liquidity Depth:</b> $${liquidity.toLocaleString()}
 ────────────────────────
 `;
 
@@ -134,9 +128,7 @@ solanaConnection.onLogs(
           if (!chatId) continue;
           try {
             await bot.telegram.sendMessage(chatId, alertMessage, { parse_mode: 'HTML', disable_web_page_preview: true });
-          } catch (tgErr) {
-            console.error(`↳ ❌ Telegram Error: ${tgErr.message}`);
-          }
+          } catch (tgErr) {}
         }
       })();
     } catch (e) {}
@@ -145,5 +137,5 @@ solanaConnection.onLogs(
 );
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Security Framework Direct-Stream Server Running on Port ${PORT}`);
+  console.log(`🚀 Strict Security Layer Listening Active on Port ${PORT}`);
 });
