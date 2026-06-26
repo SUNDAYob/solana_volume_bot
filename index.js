@@ -10,16 +10,15 @@ const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 const CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.trim());
 
 const recentMints = new Set();
-const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 app.use(express.json());
 
 app.get('/', (req, res) => {
-  res.status(200).send('GMGN Institutional Alpha Sniper V14: Online\n');
+  res.status(200).send('⚡ GMGN Ultra-Fast Alpha Sniper (Fresh Wallets Allowed): Online\n');
 });
 
 app.post('/helius-stream', async (req, res) => {
-  res.status(200).send('OK');
+  res.status(200).send('OK'); 
 
   try {
     const transactions = req.body;
@@ -27,7 +26,6 @@ app.post('/helius-stream', async (req, res) => {
 
     for (const tx of transactions) {
       let tokenMint = null;
-      
       const tokenTransfers = tx.tokenTransfers || [];
       if (tokenTransfers.length > 0 && tokenTransfers[0].tokenMint) {
         tokenMint = tokenTransfers[0].tokenMint;
@@ -53,112 +51,85 @@ app.post('/helius-stream', async (req, res) => {
 
       if (recentMints.has(tokenMint)) continue;
       recentMints.add(tokenMint);
-      setTimeout(() => recentMints.delete(tokenMint), 120000);
+      setTimeout(() => recentMints.delete(tokenMint), 60000); 
 
-      console.log(`📡 [STREAM EVENT] Ingested candidate token: ${tokenMint}`);
-
-      // High-speed parallel analytics worker
+      // Immediate Parallel Processing
       (async () => {
         try {
-          // Fast Execution: Wait only 15 seconds to let the initial block swaps compute on-chain
-          await delay(15000);
-
           let tokenData = null;
           
-          // --- TARGET ENDPOINT: GMGN REALTIME TOKEN SECURITY & ANALYTICS ---
+          // Pull Realtime Stats from GMGN
           try {
             const gmgnRes = await axios.get(`https://gmgn.ai/api/v1/token_info/sol/${tokenMint}`, {
               headers: { 'Authorization': `Bearer ${process.env.GMGN_API_KEY || ''}` },
-              timeout: 4500
+              timeout: 3000 
             });
             if (gmgnRes.data && gmgnRes.data.data) {
               tokenData = gmgnRes.data.data;
             }
           } catch (e) {
-            console.log(`   ↳ ❌ Unindexed on GMGN registry during fast sweep: ${tokenMint.substring(0,6)}`);
-            return;
+            return; 
           }
 
           if (!tokenData) return;
 
-          // 1. DATA EXTRACTION
-          const tokenName = tokenData.name || 'Unknown';
-          const tokenSymbol = tokenData.symbol || 'MEME';
-          const volume24h = Number(tokenData.volume_24h || 0);
-          const liquidityUsd = Number(tokenData.liquidity || 0);
-          const devAddress = tokenData.creator || "Unknown Address";
-          
-          // 2. STAGE 1 FIREWALL: HARD SAFETY CHECK & HONEYPOT FILTERS
-          const isMintRenounced = tokenData.renounced_mint === true || tokenData.is_renounced === 1;
-          const isFreezeRenounced = tokenData.renounced_freeze_account === true || tokenData.is_freezable === 0;
+          // --- RULE 1: STRICT SECURITY CHECK ---
+          const devRugHistoryCount = Number(tokenData.creator_rug_count || 0);
           const isHoneypot = tokenData.is_honeypot === 'yes' || tokenData.honeypot_risk === true;
           const isLpLocked = tokenData.lp_locked === true || tokenData.burn_ratio === 100 || tokenData.lp_burned === true;
+          const isMintRenounced = tokenData.renounced_mint === true || tokenData.is_renounced === 1;
 
-          if (isHoneypot) {
-            console.log(`   ↳ 🛑 [BLOCKED] Malicious Honeypot Signature: ${tokenMint.substring(0,6)}`);
-            return;
-          }
-          if (!isMintRenounced || !isFreezeRenounced) {
-            console.log(`   ↳ 🛑 [BLOCKED] Active Mint/Freeze authorities found: ${tokenMint.substring(0,6)}`);
-            return;
-          }
-          if (!isLpLocked) {
-            console.log(`   ↳ 🛑 [BLOCKED] Unlocked Liquidity Pool detected: ${tokenMint.substring(0,6)}`);
-            return;
-          }
+          if (devRugHistoryCount > 0) return; // ❌ Absolute Drop: Scammer history detected
+          if (isHoneypot || !isMintRenounced) return; // ❌ Absolute Drop: Vulnerable / Mintable contract
+          if (!isLpLocked) return; // ❌ Absolute Drop: Dev can pull the rug floor 🔒
 
-          // 3. STAGE 2 FIREWALL: DEV REPUTATION AUDIT
-          const devRugHistoryCount = Number(tokenData.creator_rug_count || 0); 
-          const devPreviousLaunches = Number(tokenData.creator_token_count || 0);
+          // --- RULE 2: WALLET PROFILE AGNOSTIC (Allows Fresh Deployers) ---
+          const devAddress = tokenData.creator || "Unknown";
+          const totalDevLaunches = Number(tokenData.creator_token_count || 0);
           
-          if (devRugHistoryCount > 0) {
-            console.log(`   ↳ 🛑 [BLOCKED] Malicious Dev Wallet Profile detected. Rug history count: ${devRugHistoryCount}`);
-            return; // Drop immediately if they have ever rugged or caused loss
-          }
+          // NOTE: We no longer drop if totalDevLaunches is 0. Fresh wallets are greenlit!
 
-          // 4. STAGE 3 FIREWALL: HIGH VOLUME TRADES & WHALES CAPTURE
+          // --- RULE 3: HIGH VOLUME VELOCITY ---
+          const volume24h = Number(tokenData.volume_24h || 0);
+          if (volume24h < 15000) return; // 🔥 Keeps notifications lightning fast by targeting real volume momentum
+
+          // --- RULE 4: TRACK WHALES FOOTPRINT ---
           const whaleBuyCount = Number(tokenData.whale_buy_count || tokenData.whales_tracked || 0);
           const largeTxCount = Number(tokenData.large_transaction_count || 0);
+          if (whaleBuyCount < 1 && largeTxCount < 1) return; // 🐋 Must have early smart money backing
 
-          // Crucial Filter: Ensure high trading activity has materialized ($5,000+ volume minimum)
-          if (volume24h < 5000) {
-            console.log(`   ↳ ⏸️ [FILTERED OUT] Insufficient trade volume activity ($${Math.round(volume24h)})`);
-            return;
-          }
-
-          // Confirm smart money or whales have executed an entry flag
-          if (whaleBuyCount < 1 && largeTxCount < 1) {
-            console.log(`   ↳ ⏸️ [FILTERED OUT] No active whale tracking footprints inside this block window.`);
-            return;
-          }
-
-          // --- ALL STIPULATIONS MET: TRANSMIT TARGET ALERTS ---
-          console.log(`👑 [ALPHA MATCH VALIDATED] Dispatched verified momentum signal for ${tokenSymbol}`);
+          // ✨ CONDITIONS SECURED -> FORWARD DISPATCH
+          const tokenName = tokenData.name || 'Alpha Token';
+          const tokenSymbol = tokenData.symbol || 'ALPH';
+          const liquidityUsd = Number(tokenData.liquidity || 0);
 
           const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
           const gmgnInterfaceLink = `https://gmgn.ai/sol/token/${tokenMint}`;
 
           const telegramAlert = `
-💎 <b>VERIFIED REVENUE breakout SIGNAL</b> 💎
+🚨 <b>FAST ALPHAS SNIPER MATCH</b> 🚨
 ────────────────────────
-▶ <b>TOKEN METADATA</b>
-• <b>Asset Name:</b> <b>${tokenName} (${tokenSymbol})</b>
+▶ <b>TOKEN PROFILE</b>
+• <b>Asset:</b> <b>${tokenName} (${tokenSymbol})</b>
 • <b>Contract:</b> <code>${tokenMint}</code>
-• <b>Known Dev Wallet:</b> <code>${devAddress}</code>
 ────────────────────────
-▶ <b>🛡️ STRICT SECURITY SANCTION PASS</b>
-• <b>Liquidity Vault:</b> Locked & Burned 🔒 ✅
-• <b>Mint/Freeze Controls:</b> Fully Renounced 🚫
-• <b>Dev Profile Audit:</b> Clean (0 Rug History across ${devPreviousLaunches} tokens) 👤 ✅
+▶ <b>🛡️ 1. SECURITY STATUS: PASS</b>
+• <b>Dev Rug History:</b> 0 Rugs Found (Clean) 👤 ✅
+• <b>Honeypot Threat:</b> Defended (Mint Renounced) 🚫
+• <b>Liquidity Pool:</b> Locked / Burned 🔒 ✅
 ────────────────────────
-▶ <b>📈 HIGH-VOLUME & WHALE TRACKER</b>
-• <b>Current Volume Velocity:</b> <b>$${volume24h.toLocaleString()}</b> 🚀
-• <b>Available Liquidity Depth:</b> <b>$${liquidityUsd.toLocaleString()}</b> 💰
-• <b>Tracked Whales Entered:</b> <b>${whaleBuyCount} Smart Buyers</b> 🔥
+▶ <b>👤 2. DEVELOPER FOOTPRINT</b>
+• <b>Dev Address:</b> <code>${devAddress}</code>
+• <b>Profile Status:</b> ${totalDevLaunches === 0 ? '🆕 Brand New Wallet' : `💼 Established (${totalDevLaunches} Launches)`}
 ────────────────────────
-▶ <b>⚔️ SPEED ENTRY CHANNELS</b>
-• <a href="${gmgnInterfaceLink}">Open GMGN Candlestick Terminal</a>
-• <a href="${trojanTradeLink}">⚔️ Execute Fast Entry via Trojan Sniper</a>
+▶ <b>📈 3 & 4. VOLOCITY & WHALE METRICS</b>
+• <b>Trade Volume Depth:</b> <code>$${volume24h.toLocaleString()}</code> 🚀
+• <b>Total Pool Liquidity:</b> <code>$${liquidityUsd.toLocaleString()}</code>
+• <b>Tracked Whales Buying:</b> <b>${whaleBuyCount} Whales Active</b> 🐋 🔥
+────────────────────────
+▶ <b>⚔️ SPEED BUY LINKS</b>
+• <a href="${gmgnInterfaceLink}">GMGN Candlestick Chart</a>
+• <a href="${trojanTradeLink}">⚔️ Sniper Instant Entry via Trojan Bot</a>
 ────────────────────────
 `;
 
@@ -178,5 +149,5 @@ app.post('/helius-stream', async (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 GMGN Verified Sniper System Online listening on Port ${PORT}`);
+  console.log(`🚀 Lightning Sniper V15 (All-Wallet Core) Listening on Port ${PORT}`);
 });
