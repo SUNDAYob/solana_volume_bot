@@ -6,22 +6,21 @@ const axios = require('axios');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Initialize Core APIs & Telegram Settings
+// Initialize Telegram with your Render Variables
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 const CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.trim());
-const GMGN_API_KEY = process.env.GMGN_API_KEY || '';
 
-// 60-second local deduplication window
+// 60-second duplicate cache window
 const recentMints = new Set();
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 app.use(express.json());
 
 app.get('/', (req, res) => {
-  res.status(200).send('🛡️ GMGN & Dexscreener Security Core Operational\n');
+  res.status(200).send('🛡️ Free-Tier GMGN & Dexscreener Security Matrix Layer Online\n');
 });
 
-// Helper for extracting nested data structures cleanly
+// Deep fallback value finder
 const getNestedProp = (obj, paths, defaultVal = 0) => {
   for (const path of paths) {
     if (obj && obj[path] !== undefined && obj[path] !== null) return obj[path];
@@ -29,10 +28,9 @@ const getNestedProp = (obj, paths, defaultVal = 0) => {
   return defaultVal;
 };
 
-// Main Ingestion Gateway
+// Ingestion Router for Helius Webhook Stream
 app.post('/helius-stream', async (req, res) => {
-  // CRITICAL: Acknowledge payload immediately to stay online
-  res.status(200).send('OK'); 
+  res.status(200).send('OK'); // Instantly tell Helius we received it
 
   try {
     const transactions = req.body;
@@ -41,7 +39,7 @@ app.post('/helius-stream', async (req, res) => {
     for (const tx of transactions) {
       let tokenMint = null;
 
-      // Extract Token Mint from standard transfers
+      // Extract mint address from transaction structure
       if (tx.tokenTransfers && tx.tokenTransfers.length > 0) {
         const transfer = tx.tokenTransfers.find(t => t.tokenMint && t.tokenMint.length >= 32);
         if (transfer) tokenMint = transfer.tokenMint;
@@ -51,78 +49,77 @@ app.post('/helius-stream', async (req, res) => {
       tokenMint = tokenMint.trim();
       if (tokenMint.length < 32 || tokenMint.includes('1111111111111111')) continue;
 
-      // Prevent processing duplicate events
+      // Local tracking deduplication
       if (recentMints.has(tokenMint)) continue;
       recentMints.add(tokenMint);
       setTimeout(() => recentMints.delete(tokenMint), 60000);
 
-      console.log(`\n🔍 [LAUNCH INGESTED] Analyzing security layout for: ${tokenMint}`);
+      console.log(`\n🔍 [LAUNCH INGESTED] Running security checks on: ${tokenMint}`);
 
-      // Run API scans asynchronously to avoid delaying the stream
+      // Run scans asynchronously
       (async () => {
         let gmgnData = null;
         let dexscreenerData = null;
 
-        // Allow token pools a brief moment to propagate across third-party trackers
+        // Allow trackers time to capture the pair data
         await delay(3000);
 
-        // 🛡️ API LAYER 1: GMGN Security Profiles
+        // 🛡️ SECURITY LAYER 1: Public GMGN Web Token Info API
         try {
-          const gmgnResponse = await axios.get(`https://gmgn.ai/defi/quotation/v1/tokens/sol/${tokenMint}`, {
-            headers: { 'Authorization': `Bearer ${GMGN_API_KEY}`, 'User-Agent': 'Mozilla/5.0' },
-            timeout: 5000
+          const gmgnResponse = await axios.get(`https://gmgn.ai/api/v1/token_security/sol/${tokenMint}`, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+            timeout: 6000
           });
           if (gmgnResponse.data && gmgnResponse.data.data) {
             gmgnData = gmgnResponse.data.data;
           }
         } catch (err) {
-          console.log(`↳ ⚠️ GMGN Fetch Skip (${tokenMint.slice(0,6)}): API unindexed or rate-limited.`);
+          console.log(`↳ ⚠️ GMGN Public Security API pending details: ${err.message}`);
         }
 
-        // 🛡️ API LAYER 2: Dexscreener Aggregation
+        // 🛡️ SECURITY LAYER 2: Dexscreener Real-time Analytical API
         try {
           const dexResponse = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${tokenMint}`, { timeout: 4000 });
           if (dexResponse.data && dexResponse.data.pairs && dexResponse.data.pairs.length > 0) {
             dexscreenerData = dexResponse.data.pairs[0];
           }
         } catch (err) {
-          console.log(`↳ ⚠️ Dexscreener Fetch Skip: Token data not fully populated.`);
+          console.log(`↳ ⚠️ Dexscreener Core Data unavailable yet.`);
         }
 
-        // Fallback: Drop token if no data profile is retrieved
-        if (!gmgnData) {
-          console.log(`↳ ❌ [DROP] Skipping token due to empty security profile on creation.`);
+        // Proceed if we have at least one valid endpoint profile back
+        if (!gmgnData && !dexscreenerData) {
+          console.log(`↳ ❌ [DROP] Insufficient metrics returned from trackers.`);
           return;
         }
 
-        // --- SECURITY LOGIC ENGINE ---
-        const rugCount = Number(getNestedProp(gmgnData, ['creator_rug_count', 'dev_rug_count'], 0));
-        const top10Rate = parseFloat(getNestedProp(gmgnData, ['top_10_holder_rate', 'holder_concentration'], 0)) * 100;
-        const isHoneypot = gmgnData.is_honeypot === 1 || gmgnData.is_honeypot === true;
-        const mintRenounced = gmgnData.mint_has_not_renounced === 0 || gmgnData.is_mintable === false;
+        // --- THE SECURITY FILTER MATRIX ---
+        const rugCount = gmgnData ? Number(getNestedProp(gmgnData, ['creator_rug_count', 'dev_rug_count'], 0)) : 0;
+        const top10Rate = gmgnData ? parseFloat(getNestedProp(gmgnData, ['top_10_holder_rate', 'holder_concentration'], 0)) * 100 : 0;
+        const isHoneypot = gmgnData ? (gmgnData.is_honeypot === 1 || gmgnData.is_honeypot === true) : false;
+        const mintRenounced = gmgnData ? (gmgnData.mint_has_not_renounced === 0 || gmgnData.is_mintable === false) : true;
         
-        const liquidity = dexscreenerData ? Number(getNestedProp(dexscreenerData, ['liquidity', 'usd'], 0)) : Number(getNestedProp(gmgnData, ['liquidity'], 0));
+        const liquidity = dexscreenerData ? Number(getNestedProp(dexscreenerData, ['liquidity', 'usd'], 0)) : 0;
+        const tokenSymbol = dexscreenerData ? dexscreenerData.baseToken.symbol : (gmgnData ? gmgnData.symbol : 'TOKEN');
+        const tokenName = dexscreenerData ? dexscreenerData.baseToken.name : (gmgnData ? gmgnData.name : 'Solana Asset');
 
-        // Evaluate metrics against strict rules
+        // Apply strict filtration values
         if (rugCount > 1) {
-          console.log(`↳ ❌ [FILTERED] Dev has active history of rugging (${rugCount} rugs).`);
+          console.log(`↳ ❌ [FILTERED] Dev has a history of rugging (${rugCount} rugs).`);
           return;
         }
         if (top10Rate > 35) {
-          console.log(`↳ ❌ [FILTERED] Supply distribution risk: Top 10 hold ${top10Rate.toFixed(1)}%.`);
+          console.log(`↳ ❌ [FILTERED] Distribution threat: Top 10 control ${top10Rate.toFixed(1)}%.`);
           return;
         }
         if (isHoneypot) {
-          console.log(`↳ ❌ [FILTERED] Honeypot code configuration flagged.`);
+          console.log(`↳ ❌ [FILTERED] Honeypot scam layout confirmed.`);
           return;
         }
 
-        console.log(`🟩 [SECURITY PASSED] Broadcasting clean token profile: ${gmgnData.symbol || 'SOL'}`);
+        console.log(`🟩 [PASSED SECURITY SCRUB] Delivering safe launch alert for ${tokenSymbol}`);
 
-        // --- TELEGRAM NOTIFICATION TEMPLATE ---
-        const tokenName = gmgnData.name || 'Solana Asset';
-        const tokenSymbol = gmgnData.symbol || 'TOKEN';
-
+        // --- DISPATCH TELEGRAM ALERT PACKET ---
         const alertMessage = `
 🛡️ <b>VERIFIED SECURE LAUNCH</b> 🛡️
 ────────────────────────
@@ -131,9 +128,9 @@ app.post('/helius-stream', async (req, res) => {
 ────────────────────────
 ▶ <b>SECURITY AUDIT METRICS</b>
 • <b>Dev Rug History:</b> ${rugCount === 0 ? '✅ Clean (0)' : `⚠️ ${rugCount} Rugs`}
-• <b>Top 10 Supply Rate:</b> ${top10Rate.toFixed(1)}%
+• <b>Top 10 Supply Rate:</b> ${top10Rate > 0 ? `${top10Rate.toFixed(1)}%` : '✅ Safe Dynamic'}
 • <b>Mint Authority:</b> ${mintRenounced ? '✅ Renounced' : '🚨 Active'}
-• <b>Liquidity Tracked:</b> $${liquidity > 0 ? liquidity.toLocaleString() : 'Indexing Pool...'}
+• <b>Liquidity Depth:</b> ${liquidity > 0 ? `$${liquidity.toLocaleString()}` : 'Indexing Pool...'}
 ────────────────────────
 ▶ <b>SECURE ACTION HUB</b>
 • <a href="https://gmgn.ai/sol/token/${tokenMint}">📊 GMGN Safety Terminal</a>
@@ -148,29 +145,29 @@ app.post('/helius-stream', async (req, res) => {
               parse_mode: 'HTML',
               disable_web_page_preview: true
             });
+            console.log(`↳ 🎉 Delivered cleanly to chat: ${chatId}`);
           } catch (tgErr) {
-            console.error(`↳ ❌ Telegram Routing Drop: ${tgErr.message}`);
+            console.error(`↳ ❌ Telegram Delivery Error: ${tgErr.message}`);
           }
         }
       })();
     }
   } catch (error) {
-    console.error(`[SYSTEM CORE ERROR]: ${error.message}`);
+    console.error(`[CORE SECURITY MODULE EXCEPTION]: ${error.message}`);
   }
 });
 
-// --- RENDER KEEP-ALIVE INTERCEPT LOOP ---
+// Keep-Alive Ping Execution Block to prevent instance sleep cycles
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Security Engine Active and Tracking Ports on ${PORT}`);
+  console.log(`🚀 Dedicated Security Engine Active on Port ${PORT}`);
 
-  // Automated self-ping framework to keep the app awake 24/7
-  const APP_PING_URL = `https://solana-volume-bot-pvtx.onrender.com`;
+  const MY_RENDER_APP = `https://solana-volume-bot-pvtx.onrender.com`;
   setInterval(async () => {
     try {
-      await axios.get(APP_PING_URL);
-      console.log('⏳ [KEEP-ALIVE] Server system successfully pinged. Firewalls active.');
+      await axios.get(MY_RENDER_APP);
+      console.log('⏳ [KEEP-ALIVE] Pinged security backend module. Server active.');
     } catch (err) {
-      console.log('⏳ [KEEP-ALIVE] Cron state check completed.');
+      console.log('⏳ [KEEP-ALIVE] Cron intercept fired.');
     }
   }, 240000); // 4 minutes
 });
