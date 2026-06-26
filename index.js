@@ -1,7 +1,6 @@
 require('dotenv').config();
 const express = require('express');
 const { Telegraf } = require('telegraf');
-const axios = require('axios');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -9,24 +8,17 @@ const PORT = process.env.PORT || 10000;
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 const CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.trim());
 
+// Track recent mints to prevent duplicate alerts for the same token within 1 minute
 const recentMints = new Set();
-const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 app.use(express.json());
 
 app.get('/', (req, res) => {
-  res.status(200).send('⚙️ GMGN Bulletproof Sniper Cluster: Active\n');
+  res.status(200).send('⚡ GMGN Stream Broadcaster Online\n');
 });
 
-// Deep Helper to safely read fluctuating API properties
-const getProp = (obj, keys, defaultVal = 0) => {
-  for (const key of keys) {
-    if (obj && obj[key] !== undefined && obj[key] !== null) return obj[key];
-  }
-  return defaultVal;
-};
-
 app.post('/helius-stream', async (req, res) => {
+  // Always respond immediately to Helius to keep the webhook healthy
   res.status(200).send('OK'); 
 
   try {
@@ -35,11 +27,14 @@ app.post('/helius-stream', async (req, res) => {
 
     for (const tx of transactions) {
       let tokenMint = null;
+      
+      // Extract the token mint from transfers
       const tokenTransfers = tx.tokenTransfers || [];
       if (tokenTransfers.length > 0 && tokenTransfers[0].tokenMint) {
         tokenMint = tokenTransfers[0].tokenMint;
       }
 
+      // Fallback: Parse instructions structurally if transfers are empty
       if (!tokenMint && tx.instructions) {
         for (const inst of tx.instructions) {
           if (inst.accounts && inst.accounts.length > 2) {
@@ -54,140 +49,53 @@ app.post('/helius-stream', async (req, res) => {
         }
       }
 
+      // Sanity checks on the address format
       if (!tokenMint || typeof tokenMint !== 'string') continue;
       tokenMint = tokenMint.trim();
       if (tokenMint.includes('11111111111111111111111111111111') || tokenMint.length < 32) continue;
 
+      // Deduplicate rapid incoming multi-transfers
       if (recentMints.has(tokenMint)) continue;
       recentMints.add(tokenMint);
       setTimeout(() => recentMints.delete(tokenMint), 60000); 
 
-      // Background handling thread
-      (async () => {
-        let rawData = null;
-        let attempts = 0;
-        const maxAttempts = 4;
-        let backoffDelay = 2500; 
+      // 🎯 Direct, unfiltered delivery
+      console.log(`[STREAM MATCH] Broadcasting token to channel: ${tokenMint}`);
 
-        console.log(`[INGESTED] Evaluating block entry for token: ${tokenMint.slice(0,6)}...`);
+      // Optimized deep links to prevent routing errors in mobile layouts
+      const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
+      const gmgnMobileLink = `https://gmgn.ai/sol/token/${tokenMint}`;
 
-        while (attempts < maxAttempts && !rawData) {
-          attempts++;
-          
-          const apiEndpoints = [
-            `https://gmgn.ai/defi/quotation/v1/tokens/sol/${tokenMint}`,
-            `https://gmgn.ai/api/v1/token_info/sol/${tokenMint}`
-          ];
-
-          for (const url of apiEndpoints) {
-            try {
-              const res = await axios.get(url, {
-                headers: { 
-                  'Authorization': `Bearer ${process.env.GMGN_API_KEY || ''}`,
-                  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
-                },
-                timeout: 3000 
-              });
-              if (res.data && (res.data.data || res.data.token)) {
-                rawData = res.data.data || res.data.token;
-                break;
-              }
-            } catch (err) {}
-          }
-
-          if (!rawData && attempts < maxAttempts) {
-            await delay(backoffDelay);
-            backoffDelay *= 2; 
-          }
-        }
-
-        if (!rawData) {
-          console.log(`↳ ❌ Dropped: Token fetching timeout (${tokenMint.slice(0,6)})`);
-          return;
-        }
-
-        // 🛡️ 1. REVISED BALANCED SECURITY MATRIX
-        const devRugHistoryCount = Number(getProp(rawData, ['creator_rug_count', 'dev_rug_count', 'rug_count'], 0));
-        if (devRugHistoryCount > 0) {
-          console.log(`↳ ❌ Dropped: Dev has a blacklisted history of ${devRugHistoryCount} rugs.`);
-          return;
-        }
-
-        // Catch explicitly dangerous honey pots, but allow processing if unconfirmed/pending
-        const isHoneypotVal = getProp(rawData, ['is_honeypot', 'honeypot_risk', 'honeypot'], 'no');
-        if (isHoneypotVal === 'yes' || isHoneypotVal === true || isHoneypotVal === 1) {
-          console.log(`↳ ❌ Dropped: Explicit Honeypot warning detected.`);
-          return;
-        }
-
-        // 👤 2. DEVELOPER WALLET REPUTATION
-        const devAddress = rawData.creator || rawData.dev_address || "Unknown Address";
-        const totalDevLaunches = Number(getProp(rawData, ['creator_token_count', 'dev_token_count', 'total_launches'], 0));
-
-        // 📈 3. MARKET MOMENTUM METRICS
-        const volume24h = Number(getProp(rawData, ['volume_24h', 'volume', 'usd_volume_24h'], 0));
-        const volume1h = Number(getProp(rawData, ['volume_1h', 'usd_volume_1h'], 0));
-        const volume5m = Number(getProp(rawData, ['volume_5m', 'usd_volume_5m'], 0));
-        
-        // Balanced Check: If it has zero volume fields completely, filter it out
-        if (volume24h === 0 && volume5m === 0 && volume1h === 0) {
-          console.log(`↳ ❌ Dropped: Token has zero transaction tracking activity.`);
-          return;
-        }
-
-        // 🐋 4. WHALES & SMART MONEY FOOTPRINT
-        const whaleBuyCount = Number(getProp(rawData, ['whale_buy_count', 'whales_tracked', 'smart_money_buy_count'], 0));
-        const largeTxCount = Number(getProp(rawData, ['large_transaction_count', 'buys', 'swaps'], 0));
-
-        // ✨ COMPILE METADATA & SHIP TO TELEGRAM
-        const tokenName = rawData.name || 'Solana Token';
-        const tokenSymbol = rawData.symbol || 'SOL';
-        const liquidityUsd = Number(getProp(rawData, ['liquidity', 'pool_liquidity', 'total_liquidity'], 0));
-
-        const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
-        const gmgnMobileLink = `https://gmgn.ai/sol/token/${tokenMint}`;
-
-        const telegramAlert = `
-🚨 <b>FAST ALPHAS SNIPER MATCH</b> 🚨
+      const telegramAlert = `
+🚀 <b>NEW SOLANA PAIR DETECTED</b> 🚀
 ────────────────────────
 ▶ <b>TOKEN PROFILE</b>
-• <b>Asset:</b> <b>${tokenName} (${tokenSymbol})</b>
 • <b>Contract:</b> <code>${tokenMint}</code>
 ────────────────────────
-▶ <b>🛡️ SECURITY ASSESSMENT</b>
-• <b>Dev Rug History:</b> 0 Rugs Found (Clean) 👤 ✅
-• <b>Malicious Risks:</b> No Active Threat Flagged 🚫
-────────────────────────
-▶ <b>👤 DEVELOPER INFRASTRUCTURE</b>
-• <b>Dev Address:</b> <code>${devAddress}</code>
-• <b>Profile Status:</b> ${totalDevLaunches === 0 ? '🆕 Fresh Wallet Approved' : `💼 Established (${totalDevLaunches} Launches)`}
-────────────────────────
-▶ <b>📈 VELOCITY & WHALE FOOTPRINT</b>
-• <b>Tracked Volume:</b> <code>$${(volume24h || volume1h || volume5m).toLocaleString()}</code> 🚀
-• <b>Liquidity Depth:</b> <code>$${liquidityUsd > 0 ? '$' + liquidityUsd.toLocaleString() : 'Indexing Pool...'}</code>
-• <b>Whales Active:</b> <b>${whaleBuyCount} Smart Buyers In</b> 🐋 🔥
-────────────────────────
-▶ <b>⚔️ SPEED ENTRY CHANNELS</b>
-• <a href="${gmgnMobileLink}">GMGN Candlestick Chart Terminal</a>
-• <a href="${trojanTradeLink}"> Sniper Instant Entry via Trojan Bot</a>
+▶ <b>⚔️ ACTIVE ENTRY RAMP</b>
+• <a href="${gmgnMobileLink}">📊 Open GMGN Chart Terminal</a>
+• <a href="${trojanTradeLink}">⚔️ Sniper Instant Buy (Trojan)</a>
 ────────────────────────
 `;
 
-        for (const chatId of CHAT_IDS) {
-          if (!chatId) continue;
-          try {
-            await bot.telegram.sendMessage(chatId, telegramAlert, { 
-              parse_mode: 'HTML',
-              disable_web_page_preview: true 
-            });
-          } catch (tgErr) {}
+      // Dispatch to your chat list
+      for (const chatId of CHAT_IDS) {
+        if (!chatId) continue;
+        try {
+          await bot.telegram.sendMessage(chatId, telegramAlert, { 
+            parse_mode: 'HTML',
+            disable_web_page_preview: true 
+          });
+        } catch (tgErr) {
+          console.log(`↳ [TELEGRAM ERROR] Check your Bot Token / Chat ID configurations: ${tgErr.message}`);
         }
-        console.log(`↳ 🎉 Alert successfully dispatched to Telegram channels! (${tokenMint.slice(0,6)})`);
-      })();
+      }
     }
-  } catch (error) {}
+  } catch (error) {
+    console.log(`[CORE EXCEPTION]: ${error.message}`);
+  }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Production Balanced GMGN Sniper Core Running on Port ${PORT}`);
+  console.log(`🚀 Stream Engine fully deployed on port ${PORT}`);
 });
