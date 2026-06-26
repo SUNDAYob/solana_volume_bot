@@ -2,25 +2,27 @@ require('dotenv').config();
 const express = require('express');
 const { Telegraf } = require('telegraf');
 const axios = require('axios');
+const { Connection, PublicKey } = require('@solana/web3.js');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Initialize Telegram Configuration
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 const CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.trim());
 
-// Local caching configuration to drop instant duplicate webhook hits
 const recentMints = new Set();
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+// Connect directly to the Solana Mainnet Blockchain
+const RPC_ENDPOINT = 'https://api.mainnet-beta.solana.com';
+const solanaConnection = new Connection(RPC_ENDPOINT, 'confirmed');
+
+// Raydium Liquidity Pool V4 Address
+const RAYDIUM_POOL_V4 = new PublicKey('675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8');
+
 app.use(express.json());
+app.get('/', (req, res) => res.status(200).send('🛡️ Pure Direct On-Chain Listener Active\n'));
 
-app.get('/', (req, res) => {
-  res.status(200).send('🛡️ High-Delay GMGN/Dexscreener Security Layer Online\n');
-});
-
-// Deep fallback data finder
 const getNestedProp = (obj, paths, defaultVal = 0) => {
   for (const path of paths) {
     if (obj && obj[path] !== undefined && obj[path] !== null) return obj[path];
@@ -28,76 +30,72 @@ const getNestedProp = (obj, paths, defaultVal = 0) => {
   return defaultVal;
 };
 
-// Main Ingestion Routing Table
-app.post('/helius-stream', async (req, res) => {
-  // CRITICAL: Acknowledge payload immediately to keep webhooks perfectly healthy
-  res.status(200).send('OK'); 
+// 🌟 THE DIRECT LOG LISTENER (No webhooks needed!)
+console.log('📡 Subscribing directly to Solana live logs...');
+solanaConnection.onLogs(
+  RAYDIUM_POOL_V4,
+  async (logs) => {
+    try {
+      // Filter for pool initialization instructions
+      const isNewPool = logs.logs.some(log => log.includes('initialize2'));
+      if (!isNewPool) return;
 
-  try {
-    const transactions = req.body;
-    if (!Array.isArray(transactions) || transactions.length === 0) return;
-
-    for (const tx of transactions) {
-      let tokenMint = null;
-
-      // Extract raw Token Mint address out of standard transfer structures
-      if (tx.tokenTransfers && tx.tokenTransfers.length > 0) {
-        const transfer = tx.tokenTransfers.find(t => t.tokenMint && t.tokenMint.length >= 32);
-        if (transfer) tokenMint = transfer.tokenMint;
-      }
-
-      if (!tokenMint || typeof tokenMint !== 'string') continue;
-      tokenMint = tokenMint.trim();
-      if (tokenMint.length < 32 || tokenMint.includes('1111111111111111')) continue;
-
-      // Anti-spam window
-      if (recentMints.has(tokenMint)) continue;
-      recentMints.add(tokenMint);
-      setTimeout(() => recentMints.delete(tokenMint), 60000);
-
-      console.log(`\n🔍 [LAUNCH INGESTED] ${tokenMint}`);
+      console.log(`\n⚡ [ON-CHAIN DETECTED] New pair tx: ${logs.signature}`);
       console.log(`⏳ Holding data stream for 30 seconds to allow GMGN & Dexscreener indexing...`);
 
-      // Run security audits asynchronously so we don't back up the Express engine pipeline
+      // Let the tx details propagate asynchronously
       (async () => {
+        await delay(30000);
+
+        // Fetch transaction details to extract the token mint
+        const txDetails = await solanaConnection.getParsedTransaction(logs.signature, {
+          maxSupportedTransactionVersion: 0,
+          commitment: 'confirmed'
+        });
+
+        if (!txDetails || !txDetails.meta || !txDetails.meta.postTokenBalances) return;
+
+        // Find the newly launched token mint (ignore wrapped SOL)
+        const tokenMarket = txDetails.meta.postTokenBalances.find(balance => 
+          balance.mint !== 'So11111111111111111111111111111111111111112'
+        );
+
+        if (!tokenMarket || !tokenMarket.mint) return;
+        const tokenMint = tokenMarket.mint;
+
+        if (recentMints.has(tokenMint)) return;
+        recentMints.add(tokenMint);
+        setTimeout(() => recentMints.delete(tokenMint), 60000);
+
+        console.log(`🚀 [30s DELAY COMPLETE] Querying APIs for: ${tokenMint}`);
+
         let gmgnData = null;
         let dexscreenerData = null;
 
-        // ⏱️ NEW ENHANCED PROPAGATION DELAY (30 Seconds)
-        await delay(30000);
-
-        console.log(`🚀 [30s DELAY COMPLETE] Querying API architectures for ${tokenMint.slice(0, 6)}...`);
-
-        // 🛡️ SECURITY QUERY 1: GMGN Public Safety API
+        // 🛡️ SECURITY QUERY 1: GMGN
         try {
           const gmgnResponse = await axios.get(`https://gmgn.ai/api/v1/token_security/sol/${tokenMint}`, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+            headers: { 'User-Agent': 'Mozilla/5.0' },
             timeout: 6000
           });
-          if (gmgnResponse.data && gmgnResponse.data.data) {
-            gmgnData = gmgnResponse.data.data;
-          }
+          if (gmgnResponse.data && gmgnResponse.data.data) gmgnData = gmgnResponse.data.data;
         } catch (err) {
-          console.log(`↳ ⚠️ GMGN Public API Issue: ${err.message}`);
+          console.log(`↳ ⚠️ GMGN Fetch Issue.`);
         }
 
-        // 🛡️ SECURITY QUERY 2: Dexscreener Real-time Data Mapping
+        // 🛡️ SECURITY QUERY 2: Dexscreener
         try {
           const dexResponse = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${tokenMint}`, { timeout: 4000 });
-          if (dexResponse.data && dexResponse.data.pairs && dexResponse.data.pairs.length > 0) {
-            dexscreenerData = dexResponse.data.pairs[0];
-          }
+          if (dexResponse.data && dexResponse.data.pairs) dexscreenerData = dexResponse.data.pairs[0];
         } catch (err) {
-          console.log(`↳ ⚠️ Dexscreener Public API Issue: ${err.message}`);
+          console.log(`↳ ⚠️ Dexscreener Fetch Issue.`);
         }
 
-        // Drop the item completely if both data engines come back dry after 30s
         if (!gmgnData && !dexscreenerData) {
-          console.log(`↳ ❌ [DROP] No data profiles could be generated by tracking networks.`);
+          console.log(`↳ ❌ [DROP] Missing metrics from tracking networks.`);
           return;
         }
 
-        // --- FILTER INTEGRATION PARSING ---
         const rugCount = gmgnData ? Number(getNestedProp(gmgnData, ['creator_rug_count', 'dev_rug_count'], 0)) : 0;
         const top10Rate = gmgnData ? parseFloat(getNestedProp(gmgnData, ['top_10_holder_rate', 'holder_concentration'], 0)) * 100 : 0;
         const isHoneypot = gmgnData ? (gmgnData.is_honeypot === 1 || gmgnData.is_honeypot === true) : false;
@@ -107,23 +105,13 @@ app.post('/helius-stream', async (req, res) => {
         const tokenSymbol = dexscreenerData ? dexscreenerData.baseToken.symbol : (gmgnData ? gmgnData.symbol : 'TOKEN');
         const tokenName = dexscreenerData ? dexscreenerData.baseToken.name : (gmgnData ? gmgnData.name : 'Solana Asset');
 
-        // Evaluate security thresholds
-        if (rugCount > 1) {
-          console.log(`↳ ❌ [FILTERED] Dev profile flagged with previous rug history (${rugCount} rugs).`);
-          return;
-        }
-        if (top10Rate > 35) {
-          console.log(`↳ ❌ [FILTERED] Over-concentration risk: Top 10 control ${top10Rate.toFixed(1)}%.`);
-          return;
-        }
-        if (isHoneypot) {
-          console.log(`↳ ❌ [FILTERED] Honeypot contract configuration found.`);
+        if (rugCount > 1 || top10Rate > 35 || isHoneypot) {
+          console.log(`↳ ❌ [FILTERED] Failed security metric parameters.`);
           return;
         }
 
-        console.log(`🟩 [SECURITY PASSED] Dispatching clean profile: ${tokenSymbol}`);
+        console.log(`🟩 [SECURITY PASSED] Pushing alert for ${tokenSymbol}`);
 
-        // --- TELEGRAM BROADCAST LAYER ---
         const alertMessage = `
 🛡️ <b>VERIFIED SECURE LAUNCH</b> 🛡️
 ────────────────────────
@@ -145,33 +133,17 @@ app.post('/helius-stream', async (req, res) => {
         for (const chatId of CHAT_IDS) {
           if (!chatId) continue;
           try {
-            await bot.telegram.sendMessage(chatId, alertMessage, {
-              parse_mode: 'HTML',
-              disable_web_page_preview: true
-            });
-            console.log(`↳ 🎉 Alert pushed to chat profile: ${chatId}`);
+            await bot.telegram.sendMessage(chatId, alertMessage, { parse_mode: 'HTML', disable_web_page_preview: true });
           } catch (tgErr) {
-            console.error(`↳ ❌ Telegram Dispatch Failure: ${tgErr.message}`);
+            console.error(`↳ ❌ Telegram Error: ${tgErr.message}`);
           }
         }
       })();
-    }
-  } catch (error) {
-    console.error(`[CRITICAL EXCEPTION LOOPS]: ${error.message}`);
-  }
-});
+    } catch (e) {}
+  },
+  'confirmed'
+);
 
-// Render Keep-Alive Polling Layer
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Pure-API Security Grid Listening Active on Port ${PORT}`);
-
-  const TARGET_SELF_URL = `https://solana-volume-bot-pvtx.onrender.com`;
-  setInterval(async () => {
-    try {
-      await axios.get(TARGET_SELF_URL);
-      console.log('⏳ [KEEP-ALIVE] Ping sent to core proxy router. Engine active.');
-    } catch (err) {
-      console.log('⏳ [KEEP-ALIVE] State synchronization check complete.');
-    }
-  }, 240000); // 4 minutes
+  console.log(`🚀 Security Framework Direct-Stream Server Running on Port ${PORT}`);
 });
