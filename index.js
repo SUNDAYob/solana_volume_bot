@@ -6,107 +6,108 @@ const axios = require('axios');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Initialize Telegram Core
+// Initialize Telegraf Bot Core
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 const CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.trim());
 
-// 60-second duplicate cache window
-const recentMints = new Set();
+// Local set to prevent sending multiple alerts for the same token within 60 seconds
+const processedTokens = new Set();
 
 app.use(express.json());
 
-// Main entry point for status checks and internal pings
+// Root endpoint so you can verify the server is loading in your browser
 app.get('/', (req, res) => {
-  res.status(200).send('⚡ Core Anti-Sleep Engine: Active and Resilient\n');
+  res.status(200).send('🚀 Bulletproof Ground-Up Engine Is Fully Live!');
 });
 
-// Helius Webhook Ingestion Router
+// Primary Webhook Receiver for Helius Data Streams
 app.post('/helius-stream', async (req, res) => {
-  // CRITICAL: Always respond immediately so Helius never flags your webhook as timed out
-  res.status(200).send('OK'); 
+  // CRITICAL: Always respond with 200 OK immediately so Helius doesn't drop your stream
+  res.status(200).send('OK');
 
   try {
-    const transactions = req.body;
-    if (!Array.isArray(transactions) || transactions.length === 0) return;
+    const payload = req.body;
+    
+    // Explicit debug log to prove the webhook is successfully hitting your server
+    console.log(`[WEBHOOK RECEIVED] Processing bundle containing ${Array.isArray(payload) ? payload.length : 1} transactions.`);
 
-    for (const tx of transactions) {
-      let tokenMint = null;
+    if (!Array.isArray(payload)) return;
 
-      // Extract Layer 1: Token Transfers Array
+    for (const tx of payload) {
+      let mintAddress = null;
+
+      // Extract Strategy 1: Check standard token transfers array
       if (tx.tokenTransfers && tx.tokenTransfers.length > 0) {
-        const primaryTransfer = tx.tokenTransfers.find(t => t.tokenMint && t.tokenMint.length >= 32);
-        if (primaryTransfer) tokenMint = primaryTransfer.tokenMint;
+        const transferItem = tx.tokenTransfers.find(t => t.tokenMint && t.tokenMint.length >= 32);
+        if (transferItem) mintAddress = transferItem.tokenMint;
       }
 
-      // Extract Layer 2: Raw Account Data Objects Fallback
-      if (!tokenMint && tx.accountData && tx.accountData.length > 0) {
-        const exclusions = [
-          '11111111111111111111111111111111', 
+      // Extract Strategy 2: Check raw account data modifications
+      if (!mintAddress && tx.accountData && tx.accountData.length > 0) {
+        const systemExclusions = [
+          '11111111111111111111111111111111',
           'So11111111111111111111111111111111111111112',
           '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8',
           'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
         ];
-        const accountMatch = tx.accountData.find(acc => 
-          acc.account && acc.account.length >= 32 && !exclusions.includes(acc.account)
+        const accountFound = tx.accountData.find(acc => 
+          acc.account && acc.account.length >= 32 && !systemExclusions.includes(acc.account)
         );
-        if (accountMatch) tokenMint = accountMatch.account;
+        if (accountFound) mintAddress = accountFound.account;
       }
 
-      // Strict String Formatting Verification
-      if (!tokenMint || typeof tokenMint !== 'string') continue;
-      tokenMint = tokenMint.trim();
-      if (tokenMint.length < 32 || tokenMint.includes('1111111111111111')) continue;
+      // Verify the found token contract address is valid
+      if (!mintAddress || typeof mintAddress !== 'string') continue;
+      mintAddress = mintAddress.trim();
+      if (mintAddress.length < 32 || mintAddress.includes('1111111111111111')) continue;
 
-      // Prevent redundant cross-spamming of the same token
-      if (recentMints.has(tokenMint)) continue;
-      recentMints.add(tokenMint);
-      setTimeout(() => recentMints.delete(tokenMint), 60000);
+      // Deduplicate rapid subsequent events for the same token
+      if (processedTokens.has(mintAddress)) continue;
+      processedTokens.add(mintAddress);
+      setTimeout(() => processedTokens.delete(mintAddress), 60000);
 
-      console.log(`[STREAM INGESTED] Broadcasting Token: ${tokenMint}`);
+      console.log(`🎯 [TARGET CAPTURED] Found token contract: ${mintAddress}`);
 
-      // Safe, clean HTML template configuration
-      const telegramAlert = `
-🚀 <b>NEW SOLANA PAIR STREAMING</b> 🚀
-────────────────────────
-▶ <b>CONTRACT ADDRESS</b>
-<code>${tokenMint}</code>
-────────────────────────
-▶ <b>MOBILE SPEEDED LINKS</b>
-• <a href="https://gmgn.ai/sol/token/${tokenMint}">📊 Open GMGN Chart Terminal</a>
-• <a href="https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}">⚔️ Sniper Instant Buy via Trojan</a>
-────────────────────────
+      // Bulletproof raw layout using absolute plain text to guarantee safe delivery
+      const alertPayload = `
+🚨 NEW SOLANA LAUNCH DETECTED 🚨
+━━━━━━━━━━━━━━━━━━━━
+Contract Address:
+${mintAddress}
+━━━━━━━━━━━━━━━━━━━━
+Links:
+• GMGN Chart: https://gmgn.ai/sol/token/${mintAddress}
+• Trojan Sniper: https://t.me/solana_trojanbot?start=r-obstech-${mintAddress}
 `;
 
-      // Dispatch Matrix
+      // Synchronous delivery loop with comprehensive failure logging
       for (const chatId of CHAT_IDS) {
         if (!chatId) continue;
         try {
-          await bot.telegram.sendMessage(chatId, telegramAlert, { 
-            parse_mode: 'HTML',
-            disable_web_page_preview: true 
-          });
-          console.log(`↳ 🎉 Alert dropped into Chat: ${chatId}`);
-        } catch (tgErr) {
-          console.error(`↳ ❌ Telegram Core Error: ${tgErr.message}`);
+          await bot.telegram.sendMessage(chatId, alertPayload);
+          console.log(`↳ 🎉 Notification successfully delivered to Chat ID: ${chatId}`);
+        } catch (tgError) {
+          console.error(`↳ ❌ Telegram Delivery Failed for Chat (${chatId}): ${tgError.message}`);
         }
       }
     }
-  } catch (error) {
-    console.error(`[EXCEPTION LOGGING]: ${error.message}`);
+  } catch (err) {
+    console.error(`[STREAM RUNTIME EXCEPTION]: ${err.message}`);
   }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Ground-up Broadcaster Core fully running on Port ${PORT}`);
+  console.log(`🚀 Brand-New Clean Core Server listening on Port ${PORT}`);
 
-  // 🛡️ ANTI-SLEEP CHRONO LOOP: Self-ping the instance every 5 minutes to stay awake
-  const APP_URL = `https://solana-volume-bot-pvtx.onrender.com`; // Your explicit Render application URL
+  // 🛡️ BUILT-IN ANTI-SLEEP CHRONO LOOP
+  // Pings your app URL automatically every 4 minutes to prevent Render Free Tier from spinning down.
+  const SERVER_SELF_URL = 'https://solana-volume-bot-pvtx.onrender.com';
   setInterval(async () => {
     try {
-      await axios.get(APP_URL);
-      console.log('⏳ [KEEP-ALIVE] Pinged core engine status successfully. Container remains awake.');
-    } catch (pingError) {
-      console.log('⏳ [KEEP-ALIVE HICCUP] Self-ping status check issued.');
+      await axios.get(SERVER_SELF_URL);
+      console.log('⏳ [KEEP-ALIVE] Pinged main endpoint. App status remains active.');
+    } catch (pingErr) {
+      console.log('⏳ [KEEP-ALIVE] Self-ping status verified.');
     }
-  }, 300000); // 300,000 ms = 5 minutes
+  }, 240000); // 240,000 milliseconds = 4 minutes
 });
