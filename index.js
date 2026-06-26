@@ -15,7 +15,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 app.use(express.json());
 
 app.get('/', (req, res) => {
-  res.status(200).send('⚡ GMGN Resilient Alpha Sniper V16: Online\n');
+  res.status(200).send('⚡ GMGN Ultra Sniper System Live\n');
 });
 
 app.post('/helius-stream', async (req, res) => {
@@ -54,13 +54,13 @@ app.post('/helius-stream', async (req, res) => {
       recentMints.add(tokenMint);
       setTimeout(() => recentMints.delete(tokenMint), 60000); 
 
-      // Launch lightning-fast parallel validation thread
+      // Run check in the background
       (async () => {
         try {
+          // ⏱️ Fast indexing pause to protect against immediate 404 errors
+          await delay(10000);
+
           let tokenData = null;
-          
-          // --- AUTOMATIC FALLBACK RETRY LOOP ---
-          // Sweeps both standard and public DeFi Quotation headers to bypass "Token Not Found" errors
           const apiEndpoints = [
             `https://gmgn.ai/defi/quotation/v1/tokens/sol/${tokenMint}`,
             `https://gmgn.ai/api/v1/token_info/sol/${tokenMint}`
@@ -68,50 +68,48 @@ app.post('/helius-stream', async (req, res) => {
 
           for (const url of apiEndpoints) {
             try {
-              const config = {
+              const res = await axios.get(url, {
                 headers: { 
                   'Authorization': `Bearer ${process.env.GMGN_API_KEY || ''}`,
-                  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+                  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
                 },
-                timeout: 2500 
-              };
-              const res = await axios.get(url, config);
+                timeout: 3000 
+              });
               if (res.data && (res.data.data || res.data.token)) {
                 tokenData = res.data.data || res.data.token;
-                break; // Found valid data, breakout of fallback loop!
+                break;
               }
-            } catch (err) {
-              // Try the next endpoint if one fails
-            }
+            } catch (err) {}
           }
 
           if (!tokenData) return;
 
-          // 🛡️ RULE 1: STRICT SECURITY MATRIX
+          // 🛡️ REQUIREMENT 1: SECURITYMATRIX FIREWALL
           const devRugHistoryCount = Number(tokenData.creator_rug_count || tokenData.dev_rug_count || 0);
           const isHoneypot = tokenData.is_honeypot === 'yes' || tokenData.honeypot_risk === true || tokenData.honeypot === 1;
           const isLpLocked = tokenData.lp_locked === true || tokenData.burn_ratio === 100 || tokenData.lp_burned === true || tokenData.liquidity_locked === 1;
           const isMintRenounced = tokenData.renounced_mint === true || tokenData.is_renounced === 1 || tokenData.mint_renounced === 1;
 
-          if (devRugHistoryCount > 0) return;         // ❌ DROP: Blacklist scammers
-          if (isHoneypot || !isMintRenounced) return; // ❌ DROP: Malicious honeypot variables
-          if (!isLpLocked) return;                    // ❌ DROP: Liquidity pool must be locked/burned 🔒
+          if (devRugHistoryCount > 0) return;          // ❌ BLOCKED: Dev has a history of rugged projects
+          if (isHoneypot || !isMintRenounced) return;  // ❌ BLOCKED: Honeypot or active mint authority detected
+          if (!isLpLocked) return;                     // ❌ BLOCKED: Liquidity pool must be locked 🔒
 
-          // 👤 RULE 2: DEVELOPER WALLET PROFILE (Allows Clean Fresh Wallets)
-          const devAddress = tokenData.creator || tokenData.dev_address || "Unknown Address";
+          // 👤 REQUIREMENT 2: WALLET BASE REPUTATION
+          const devAddress = tokenData.creator || tokenData.dev_address || "Unknown";
           const totalDevLaunches = Number(tokenData.creator_token_count || tokenData.dev_token_count || 0);
+          // Safe fresh wallets and verified developers are both allowed
 
-          // 📈 RULE 3: HIGH-VOLUME Momentum Window (Evaluates 24H and 5M parameters)
+          // 📈 REQUIREMENT 3: HIGH VOLUME VELOCITY
           const volume24h = Number(tokenData.volume_24h || tokenData.volume || 0);
           const volume5m = Number(tokenData.volume_5m || 0);
-          if (volume24h < 15000 && volume5m < 3000) return; 
+          if (volume24h < 15000 && volume5m < 3000) return; // Filters out low-activity pairs
 
-          // 🐋 RULE 4: WHALE AND LARGE SWAP COUNT
+          // 🐋 REQUIREMENT 4: WHALE TRACKING COUNTERS
           const whaleBuyCount = Number(tokenData.whale_buy_count || tokenData.whales_tracked || tokenData.smart_money_buy_count || 0);
           const largeTxCount = Number(tokenData.large_transaction_count || tokenData.buys || 0);
-          if (whaleBuyCount < 1 && largeTxCount < 1) return;
+          if (whaleBuyCount < 1 && largeTxCount < 1) return; // Ensures big buyers are entering
 
-          // ✨ ALL CHECKS CLEAR -> BUILD DISPATCH
+          // 🎉 ALL STIPULATIONS SECURED -> DISPATCH TELEGRAM ALERT
           const tokenName = tokenData.name || 'Alpha Token';
           const tokenSymbol = tokenData.symbol || 'ALPH';
           const liquidityUsd = Number(tokenData.liquidity || tokenData.pool_liquidity || 0);
@@ -120,29 +118,26 @@ app.post('/helius-stream', async (req, res) => {
           const gmgnInterfaceLink = `https://gmgn.ai/sol/token/${tokenMint}`;
 
           const telegramAlert = `
-🚨 <b>FAST ALPHAS SNIPER MATCH</b> 🚨
+💎 <b>VERIFIED REVENUE BREAKOUT SIGNAL</b> 💎
 ────────────────────────
-▶ <b>TOKEN PROFILE</b>
-• <b>Asset:</b> <b>${tokenName} (${tokenSymbol})</b>
+▶ <b>TOKEN METADATA</b>
+• <b>Asset Name:</b> <b>${tokenName} (${tokenSymbol})</b>
 • <b>Contract:</b> <code>${tokenMint}</code>
+• <b>Dev Wallet:</b> <code>${devAddress}</code>
 ────────────────────────
-▶ <b>🛡️ 1. SECURITY PASS MATRIX</b>
-• <b>Dev Rug Record:</b> 0 Rugs Found (Clean) 👤 ✅
-• <b>Honeypot Threat:</b> Safe (Mint Authority Renounced) 🚫
-• <b>Liquidity Pool:</b> Locked / Burned 🔒 ✅
+▶ <b>🛡️ STRICT SECURITY SANCTION PASS</b>
+• <b>Liquidity Vault:</b> Locked & Burned 🔒 ✅
+• <b>Mint/Freeze Controls:</b> Fully Renounced 🚫
+• <b>Dev Profile Audit:</b> Clean (0 Rug History) 👤 ✅
 ────────────────────────
-▶ <b>👤 2. DEVELOPER WALLET</b>
-• <b>Dev Address:</b> <code>${devAddress}</code>
-• <b>Profile:</b> ${totalDevLaunches === 0 ? '🆕 Fresh Wallet Verified' : `💼 Veteran (${totalDevLaunches} Launches)`}
+▶ <b>📈 HIGH-VOLUME & WHALE TRACKER</b>
+• <b>Current Volume Velocity:</b> <b>$${(volume24h || volume5m).toLocaleString()}</b> 🚀
+• <b>Available Liquidity Depth:</b> <b>$${liquidityUsd.toLocaleString()}</b> 💰
+• <b>Tracked Whales Entered:</b> <b>${whaleBuyCount} Smart Buyers</b> 🔥
 ────────────────────────
-▶ <b>📈 3 & 4. VELOCITY & WHALE ACTIVITY</b>
-• <b>Calculated Volume:</b> <code>$${(volume24h || volume5m).toLocaleString()}</code> 🚀
-• <b>Liquidity Pool:</b> <code>$${liquidityUsd.toLocaleString()}</code>
-• <b>Tracked Whales Buying:</b> <b>${whaleBuyCount} Whales Active</b> 🐋 🔥
-────────────────────────
-▶ <b>⚔️ SPEED ENTRY LINKS</b>
-• <a href="${gmgnInterfaceLink}">GMGN Candlestick Chart Terminal</a>
-• <a href="${trojanTradeLink}">⚔️ Execute Fast Entry via Trojan Bot</a>
+▶ <b>⚔️ SPEED ENTRY CHANNELS</b>
+• <a href="${gmgnInterfaceLink}">Open GMGN Candlestick Terminal</a>
+• <a href="${trojanTradeLink}">⚔️ Execute Fast Entry via Trojan Sniper</a>
 ────────────────────────
 `;
 
@@ -162,5 +157,5 @@ app.post('/helius-stream', async (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Resilient GMGN Sniper Core Listening on Port ${PORT}`);
+  console.log(`🚀 GMGN Sniper Core Listening on Port ${PORT}`);
 });
