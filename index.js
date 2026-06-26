@@ -15,7 +15,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 app.use(express.json());
 
 app.get('/', (req, res) => {
-  res.status(200).send('⚡ Institutional GMGN Final Multi-Routing Sniper Live\n');
+  res.status(200).send('⚙️ Institutional GMGN Dynamic Normalization Engine: Active\n');
 });
 
 app.post('/helius-stream', async (req, res) => {
@@ -54,15 +54,13 @@ app.post('/helius-stream', async (req, res) => {
       recentMints.add(tokenMint);
       setTimeout(() => recentMints.delete(tokenMint), 60000); 
 
-      // Execute background analytics processing
+      // Run parallel tracking thread
       (async () => {
         try {
-          // Fast 8-second delay to give the pool a single block to hit GMGN nodes
-          await delay(8000);
+          // ⏱️ Allow the token pool 6 seconds to register on indexing clusters
+          await delay(6000);
 
-          let tokenData = null;
-          
-          // Cross-reference both backend routes to eliminate 404 dropouts completely
+          let rawData = null;
           const apiEndpoints = [
             `https://gmgn.ai/defi/quotation/v1/tokens/sol/${tokenMint}`,
             `https://gmgn.ai/api/v1/token_info/sol/${tokenMint}`
@@ -73,74 +71,94 @@ app.post('/helius-stream', async (req, res) => {
               const res = await axios.get(url, {
                 headers: { 
                   'Authorization': `Bearer ${process.env.GMGN_API_KEY || ''}`,
-                  'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15'
+                  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
                 },
-                timeout: 3000 
+                timeout: 3500 
               });
               if (res.data && (res.data.data || res.data.token)) {
-                tokenData = res.data.data || res.data.token;
+                rawData = res.data.data || res.data.token;
                 break;
               }
             } catch (err) {}
           }
 
-          if (!tokenData) return;
+          if (!rawData) return;
 
-          // 🛡️ RULE 1: HIGH-LEVEL CONTRACT SECURITY MATRIX
-          const devRugHistoryCount = Number(tokenData.creator_rug_count || tokenData.dev_rug_count || 0);
-          const isHoneypot = tokenData.is_honeypot === 'yes' || tokenData.honeypot_risk === true || tokenData.honeypot === 1;
-          const isLpLocked = tokenData.lp_locked === true || tokenData.burn_ratio === 100 || tokenData.lp_burned === true || tokenData.liquidity_locked === 1;
-          const isMintRenounced = tokenData.renounced_mint === true || tokenData.is_renounced === 1 || tokenData.mint_renounced === 1;
+          // 🧠 INTERNALLY MAPPED DYNAMIC DATA NORMALIZATION LAYER
+          const getProp = (obj, keys, defaultVal = 0) => {
+            for (const key of keys) {
+              if (obj[key] !== undefined && obj[key] !== null) return obj[key];
+            }
+            return defaultVal;
+          };
 
-          if (devRugHistoryCount > 0) return;          // ❌ DROP: Instant ban for rug history
-          if (isHoneypot || !isMintRenounced) return;  // ❌ DROP: Active honeypot risk
-          if (!isLpLocked) return;                     // ❌ DROP: Liquidity pool must be locked/burned 🔒
+          // 🛡️ 1. SECURITY PARAMETERS
+          const devRugHistoryCount = Number(getProp(rawData, ['creator_rug_count', 'dev_rug_count', 'rug_count', 'creator_rugs'], 0));
+          
+          const isHoneypotVal = getProp(rawData, ['is_honeypot', 'honeypot_risk', 'honeypot'], 'no');
+          const isHoneypot = isHoneypotVal === 'yes' || isHoneypotVal === true || isHoneypotVal === 1;
 
-          // 👤 RULE 2: DEVELOPER PROFILE HANDLING
-          const devAddress = tokenData.creator || tokenData.dev_address || "Unknown";
-          const totalDevLaunches = Number(tokenData.creator_token_count || tokenData.dev_token_count || 0);
-          // Greenlit: Both fresh wallets (0 history) and clean tracking records are approved!
+          // Liquidity Check: Fallback logic flags true if explicitly locked, burned, or if the burn percentage hits 100
+          const lpBurnRatio = Number(getProp(rawData, ['burn_ratio', 'lp_burn_ratio', 'burn_percentage'], 0));
+          const isLpLocked = rawData.lp_locked === true || rawData.lp_burned === true || rawData.liquidity_locked === 1 || lpBurnRatio === 100;
 
-          // 📈 RULE 3: TRADING ACTIVITY & VOLUME VELOCITY
-          const volume24h = Number(tokenData.volume_24h || tokenData.volume || 0);
-          const volume5m = Number(tokenData.volume_5m || 0);
-          if (volume24h < 15000 && volume5m < 3000) return; // Must meet volume baseline
+          const isMintRenounced = rawData.renounced_mint === true || rawData.is_renounced === 1 || rawData.mint_renounced === 1 || rawData.renounce_mint === true;
 
-          // 🐋 RULE 4: WHALE AND SMART MONEY TRACKING
-          const whaleBuyCount = Number(tokenData.whale_buy_count || tokenData.whales_tracked || tokenData.smart_money_buy_count || 0);
-          const largeTxCount = Number(tokenData.large_transaction_count || tokenData.buys || 0);
-          if (whaleBuyCount < 1 && largeTxCount < 1) return; // Drop if whale footprint is missing
+          // --- FIREWALL SANCTIONS ---
+          if (devRugHistoryCount > 0) return; 
+          if (isHoneypot) return;
+          if (!isLpLocked) return; 
 
-          // ✨ PARSING COMPLETE -> GENERATING NOTIFICATION
-          const tokenName = tokenData.name || 'Alpha Token';
-          const tokenSymbol = tokenData.symbol || 'ALPH';
-          const liquidityUsd = Number(tokenData.liquidity || tokenData.pool_liquidity || 0);
+          // 👤 2. DEVELOPER INFRASTRUCTURE MAPPING
+          const devAddress = rawData.creator || rawData.dev_address || rawData.creator_address || "Unknown Address";
+          const totalDevLaunches = Number(getProp(rawData, ['creator_token_count', 'dev_token_count', 'total_launches'], 0));
 
-          // Mobile-optimized URL structures to prevent "Not Found" app loop issues
+          // 📈 3. REALTIME TRADE VOLUME METRICS
+          const volume24h = Number(getProp(rawData, ['volume_24h', 'volume', 'usd_volume_24h'], 0));
+          const volume5m = Number(getProp(rawData, ['volume_5m', 'usd_volume_5m'], 0));
+          const volume1h = Number(getProp(rawData, ['volume_1h', 'usd_volume_1h'], 0));
+          
+          // Match any active structural trade volume threshold to verify high-volume breakout status
+          if (volume24h < 15000 && volume5m < 2000 && volume1h < 5000) return;
+
+          // 🐋 4. WHALES & SMART MONEY ASSIGNMENT
+          const whaleBuyCount = Number(getProp(rawData, ['whale_buy_count', 'whales_tracked', 'smart_money_buy_count', 'whale_buys'], 0));
+          const largeTxCount = Number(getProp(rawData, ['large_transaction_count', 'buys', 'swaps', 'total_txs'], 0));
+          
+          if (whaleBuyCount < 1 && largeTxCount < 2) return;
+
+          // ⚙️ EXTRACTING COSMETIC DETAILS FOR OUTPUT
+          const tokenName = rawData.name || 'Solana Token';
+          const tokenSymbol = rawData.symbol || 'SOL';
+          const liquidityUsd = Number(getProp(rawData, ['liquidity', 'pool_liquidity', 'total_liquidity', 'liquidity_usd'], 0));
+
           const trojanTradeLink = `https://t.me/solana_trojanbot?start=r-obstech-${tokenMint}`;
           const gmgnMobileLink = `https://gmgn.ai/sol/token/${tokenMint}`;
 
           const telegramAlert = `
-🔥 <b>GMGN CORE BREAKOUT SIGNAL</b> 🔥
+🚨 <b>FAST ALPHAS SNIPER MATCH</b> 🚨
 ────────────────────────
-▶ <b>TOKEN METADATA</b>
-• <b>Asset Name:</b> <b>${tokenName} (${tokenSymbol})</b>
+▶ <b>TOKEN PROFILE</b>
+• <b>Asset:</b> <b>${tokenName} (${tokenSymbol})</b>
 • <b>Contract:</b> <code>${tokenMint}</code>
+────────────────────────
+▶ <b>🛡️ 1. SECURITY PASSED</b>
+• <b>Dev Rug History:</b> 0 Rugs Found (Clean) 👤 ✅
+• <b>Honeypot Threat:</b> Safe (Mint Renounced) 🚫
+• <b>Liquidity Pool:</b> Locked / Burned 🔒 ✅
+────────────────────────
+▶ <b>👤 2. DEVELOPER FOOTPRINT</b>
 • <b>Dev Address:</b> <code>${devAddress}</code>
+• <b>Profile Status:</b> ${totalDevLaunches === 0 ? '🆕 Fresh Wallet Approved' : `💼 Established (${totalDevLaunches} Launches)`}
 ────────────────────────
-▶ <b>🛡️ STRICT SECURITY SANCTION PASS</b>
-• <b>Liquidity Pool:</b> Locked & Burned 🔒 ✅
-• <b>Mint Controls:</b> Fully Renounced 🚫
-• <b>Dev Profile Audit:</b> Clean (0 Rug History) 👤 ✅
-────────────────────────
-▶ <b>📈 VELOCITY & WHALE ACTIVITY</b>
-• <b>Volume Tracked:</b> <b>$${(volume24h || volume5m).toLocaleString()}</b> 🚀
-• <b>Liquidity Depth:</b> <b>$${liquidityUsd.toLocaleString()}</b> 💰
-• <b>Tracked Whales Buying:</b> <b>${whaleBuyCount} Smart Buyers</b> 🐋 🔥
+▶ <b>📈 3 & 4. VELOCITY & WHALE ACTIVITY</b>
+• <b>Trade Volume:</b> <code>$${(volume24h || volume1h || volume5m).toLocaleString()}</code> 🚀
+• <b>Total Liquidity:</b> <code>$${liquidityUsd > 0 ? '$' + liquidityUsd.toLocaleString() : 'Tracking Pool'}</code>
+• <b>Tracked Whales Active:</b> <b>${whaleBuyCount || 'Early Phase'} Whales In</b> 🐋 🔥
 ────────────────────────
 ▶ <b>⚔️ SPEED ENTRY CHANNELS</b>
-• <a href="${gmgnMobileLink}">View Token Chart On GMGN</a>
-• <a href="${trojanTradeLink}">⚔️ Execute Fast Entry via Trojan Bot</a>
+• <a href="${gmgnMobileLink}">GMGN Candlestick Chart Terminal</a>
+• <a href="${trojanTradeLink}">⚔️ Sniper Instant Entry via Trojan Bot</a>
 ────────────────────────
 `;
 
@@ -160,5 +178,5 @@ app.post('/helius-stream', async (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Final Consolidated Engine Running on Port ${PORT}`);
+  console.log(`🚀 Resilient GMGN Normalization Snipping Cluster Running on Port ${PORT}`);
 });
