@@ -16,9 +16,9 @@ app.use(express.json()); // Essential to read Helius webhook payloads
 
 app.get('/', (req, res) => res.status(200).send('🛡️ Webhook Guard Active\n'));
 
-// 🎯 TARGET PORT: Helius will post transaction data straight here
+// 🎯 TARGET PORT: Helius posts transaction data here
 app.post('/webhook', async (req, res) => {
-  res.sendStatus(200); // Instantly reply 200 to Helius so they don't retry
+  res.sendStatus(200); // Instantly reply 200 to Helius to prevent timeouts
   
   try {
     const txs = req.body;
@@ -39,7 +39,7 @@ app.post('/webhook', async (req, res) => {
 
       // Trigger asynchronous background security check
       (async () => {
-        await delay(30000); // Hold 30 seconds for metadata indexing
+        await delay(45000); // ⏱️ BUMPED TO 45 SECONDS for maximum safety data accuracy
 
         let gmgnData = null;
         try {
@@ -56,6 +56,7 @@ app.post('/webhook', async (req, res) => {
         const top10Rate = parseFloat(gmgnData.top_10_holder_rate || gmgnData.holder_concentration || 0) * 100;
         const totalCreatedCount = Number(gmgnData.token_created_count || gmgnData.creator_token_count || 0);
 
+        // Security gate rules
         if (rugCount > 0 || gmgnData.is_honeypot || top10Rate > 45 || totalCreatedCount > 10) return;
 
         const alertMessage = `
