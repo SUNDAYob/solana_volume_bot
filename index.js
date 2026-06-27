@@ -18,7 +18,7 @@ app.use(express.json());
 app.get('/', (req, res) => res.status(200).send('🛡️ Webhook Guard Active\n'));
 
 app.post('/webhook', async (req, res) => {
-  // Always acknowledge the Helius webhook immediately
+  // Always acknowledge the Helius webhook immediately to prevent retries
   res.sendStatus(200); 
   
   try {
@@ -26,7 +26,7 @@ app.post('/webhook', async (req, res) => {
     if (!Array.isArray(txs) || txs.length === 0) return;
 
     for (const tx of txs) {
-      // 🕵️ Dual Detector Logic: Detects fresh creations OR Raydium migrations
+      // 🕵️ Dual Detector Logic: Matches original creations OR migrations
       const isNewLaunch = tx.instructions?.some(inst => inst.suggestedInstructionName === 'create');
       const isMigration = tx.type === 'CREATE_POOL' || 
                           tx.description?.toLowerCase().includes('migrat') ||
@@ -34,19 +34,19 @@ app.post('/webhook', async (req, res) => {
       
       if (!isNewLaunch && !isMigration) continue;
 
-      // Adjust timings and tag descriptions depending on the event type
+      // Dynamic styling and cushions depending on the underlying transaction profile
       const eventTag = isMigration ? "🚀 RAYDIUM GRADUATION / MIGRATION" : "💊 NEW PUMP.FUN LAUNCH";
       const waitTime = isMigration ? 15000 : 45000; 
 
-      // Extract the contract address safely
+      // Safely parse out the contract token address
       const tokenMint = tx.tokenTransfers?.[0]?.mint || tx.instructions?.[0]?.accounts?.[0];
       if (!tokenMint || recentMints.has(tokenMint)) continue;
 
-      // Anti-spam protection
+      // Anti-spam state machine protection
       recentMints.add(tokenMint);
       setTimeout(() => recentMints.delete(tokenMint), 60000);
 
-      // Process the security check asynchronously
+      // Asynchronous non-blocking security gate execution
       (async () => {
         await delay(waitTime); 
 
@@ -59,16 +59,23 @@ app.post('/webhook', async (req, res) => {
           if (gmgnResponse.data?.data) gmgnData = gmgnResponse.data.data;
         } catch (err) {}
 
-        // If GMGN has no security record yet, safely skip to prevent trading blind
+        // Skip immediately if the token metrics aren't populated on GMGN yet
         if (!gmgnData) return;
 
+        // Core security metrics parsing
         const rugCount = Number(gmgnData.creator_rug_count || gmgnData.dev_rug_count || 0);
         const top10Rate = parseFloat(gmgnData.top_10_holder_rate || gmgnData.holder_concentration || 0) * 100;
         const totalCreatedCount = Number(gmgnData.token_created_count || gmgnData.creator_token_count || 0);
+        
+        // 💎 THE PRO SUGGESTION UPGRADE: Extracts exact developer control metrics
+        const devShare = parseFloat(gmgnData.dev_team_hold_rate || gmgnData.creator_hold_rate || 0) * 100;
 
-        // 🛡️ ENFORCED SECURITY CHECKS
-        // Instantly drops the token if it fails any safety metric
-        if (rugCount > 0 || gmgnData.is_honeypot || top10Rate > 65) return;
+        // 🛡️ THE LEGENDARY SECURITY SELECTION GATE
+        // 1. Blocks known malicious creators/ruggers
+        // 2. Blocks honeypots
+        // 3. Imposes a broad 65% boundary to prevent massive early sniper dumps
+        // 4. NEW CRITERIA: Kills tokens instantly if greedy devs hold > 15% of total supply!
+        if (rugCount > 0 || gmgnData.is_honeypot || top10Rate > 65 || devShare > 15) return;
 
         const alertMessage = `
 ${eventTag}
@@ -78,6 +85,7 @@ ${eventTag}
 ────────────────────────
 ▶ <b>SECURITY AUDIT METRICS</b>
 • <b>Top 10 Concentration:</b> ${top10Rate.toFixed(1)}%
+• <b>Dev Holdings / Share:</b> ${devShare.toFixed(1)}% 🛡️
 • <b>Dev Profile:</b> ${totalCreatedCount} Created (0 Rugs)
 ────────────────────────
 ▶ <b>TRADING PORTS</b>
