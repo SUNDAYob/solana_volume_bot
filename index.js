@@ -14,9 +14,11 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 app.use(express.json());
 
+// Main health-check endpoint
 app.get('/', (req, res) => res.status(200).send('🛡️ Webhook Guard Active\n'));
 
 app.post('/webhook', async (req, res) => {
+  // Always acknowledge the Helius webhook immediately
   res.sendStatus(200); 
   
   try {
@@ -24,25 +26,28 @@ app.post('/webhook', async (req, res) => {
     if (!Array.isArray(txs) || txs.length === 0) return;
 
     for (const tx of txs) {
-      // 🔄 CAPTURE TRIPLE THREAT: New launches, Raydium migrations, OR generic pool creation types
+      // 🕵️ Dual Detector Logic: Detects fresh creations OR Raydium migrations
       const isNewLaunch = tx.instructions?.some(inst => inst.suggestedInstructionName === 'create');
-      const isMigration = tx.type === 'CREATE_POOL' || tx.description?.toLowerCase().includes('migrat');
+      const isMigration = tx.type === 'CREATE_POOL' || 
+                          tx.description?.toLowerCase().includes('migrat') ||
+                          tx.instructions?.some(inst => inst.programId === '6EF83uUk4936n7RWdqCw1LKUUY56CgdYSL5LWWTZ96K2');
       
       if (!isNewLaunch && !isMigration) continue;
 
-      // Tag the event type so you can see it clearly on Telegram
-      const eventTag = isMigration ? "🚀 RAYDIUM MIGRATION / GRADUATION" : "💊 NEW PUMP.FUN LAUNCH";
+      // Adjust timings and tag descriptions depending on the event type
+      const eventTag = isMigration ? "🚀 RAYDIUM GRADUATION / MIGRATION" : "💊 NEW PUMP.FUN LAUNCH";
+      const waitTime = isMigration ? 15000 : 45000; 
 
+      // Extract the contract address safely
       const tokenMint = tx.tokenTransfers?.[0]?.mint || tx.instructions?.[0]?.accounts?.[0];
       if (!tokenMint || recentMints.has(tokenMint)) continue;
 
+      // Anti-spam protection
       recentMints.add(tokenMint);
       setTimeout(() => recentMints.delete(tokenMint), 60000);
 
+      // Process the security check asynchronously
       (async () => {
-        // If it's a migration, it already has market data history! We only need a 15s wait.
-        // If it's a raw launch, we use 45s to let the data bake.
-        const waitTime = isMigration ? 15000 : 45000;
         await delay(waitTime); 
 
         let gmgnData = null;
@@ -54,13 +59,15 @@ app.post('/webhook', async (req, res) => {
           if (gmgnResponse.data?.data) gmgnData = gmgnResponse.data.data;
         } catch (err) {}
 
+        // If GMGN has no security record yet, safely skip to prevent trading blind
         if (!gmgnData) return;
 
         const rugCount = Number(gmgnData.creator_rug_count || gmgnData.dev_rug_count || 0);
         const top10Rate = parseFloat(gmgnData.top_10_holder_rate || gmgnData.holder_concentration || 0) * 100;
         const totalCreatedCount = Number(gmgnData.token_created_count || gmgnData.creator_token_count || 0);
 
-        // Security rules (Rug prevention stays strictly on)
+        // 🛡️ ENFORCED SECURITY CHECKS
+        // Instantly drops the token if it fails any safety metric
         if (rugCount > 0 || gmgnData.is_honeypot || top10Rate > 65) return;
 
         const alertMessage = `
