@@ -12,34 +12,30 @@ const CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.tr
 const recentMints = new Set();
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-app.use(express.json()); // Essential to read Helius webhook payloads
+app.use(express.json());
 
 app.get('/', (req, res) => res.status(200).send('🛡️ Webhook Guard Active\n'));
 
-// 🎯 TARGET PORT: Helius posts transaction data here
 app.post('/webhook', async (req, res) => {
-  res.sendStatus(200); // Instantly reply 200 to Helius to prevent timeouts
+  res.sendStatus(200); 
   
   try {
     const txs = req.body;
     if (!Array.isArray(txs) || txs.length === 0) return;
 
     for (const tx of txs) {
-      // Check if this transaction is a token creation event
       const isCreate = tx.instructions?.some(inst => inst.suggestedInstructionName === 'create') || 
                        tx.type === 'CREATE_POOL';
       if (!isCreate) continue;
 
-      // Extract the new mint address safely
       const tokenMint = tx.tokenTransfers?.[0]?.mint || tx.instructions?.[0]?.accounts?.[0];
       if (!tokenMint || recentMints.has(tokenMint)) continue;
 
       recentMints.add(tokenMint);
       setTimeout(() => recentMints.delete(tokenMint), 60000);
 
-      // Trigger asynchronous background security check
       (async () => {
-        await delay(45000); // ⏱️ BUMPED TO 45 SECONDS for maximum safety data accuracy
+        await delay(45000); // ⏱️ Keeps your 45-second data cushion
 
         let gmgnData = null;
         try {
@@ -56,8 +52,11 @@ app.post('/webhook', async (req, res) => {
         const top10Rate = parseFloat(gmgnData.top_10_holder_rate || gmgnData.holder_concentration || 0) * 100;
         const totalCreatedCount = Number(gmgnData.token_created_count || gmgnData.creator_token_count || 0);
 
-        // Security gate rules
-        if (rugCount > 0 || gmgnData.is_honeypot || top10Rate > 45 || totalCreatedCount > 10) return;
+        // 🛡️ REBALANCED SECURITY GATE
+        // 1. Instantly blocks known ruggers and honeypots.
+        // 2. Adjusted Top 10 Cap to 65% to account for normal 45-second launch volume.
+        // 3. REMOVED the totalCreatedCount limit so legendary, safe devs aren't blocked!
+        if (rugCount > 0 || gmgnData.is_honeypot || top10Rate > 65) return;
 
         const alertMessage = `
 💊 <b>NEW PUMP.FUN DETECTED (WEBHOOK)</b> 💊
@@ -67,7 +66,7 @@ app.post('/webhook', async (req, res) => {
 ────────────────────────
 ▶ <b>SECURITY AUDIT METRICS</b>
 • <b>Top 10 Concentration:</b> ${top10Rate.toFixed(1)}%
-• <b>Dev Profile:</b> ${totalCreatedCount} Created
+• <b>Dev Profile:</b> ${totalCreatedCount} Created (0 Rugs)
 ────────────────────────
 ▶ <b>TRADING PORTS</b>
 • <a href="https://gmgn.ai/sol/token/${tokenMint}">GMGN Chart Terminal</a>
