@@ -14,19 +14,19 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 app.use(express.json());
 
-// Main health-check endpoint
 app.get('/', (req, res) => res.status(200).send('🛡️ Webhook Guard Active\n'));
 
 app.post('/webhook', async (req, res) => {
-  // Always acknowledge the Helius webhook immediately to prevent retries
   res.sendStatus(200); 
   
   try {
     const txs = req.body;
     if (!Array.isArray(txs) || txs.length === 0) return;
 
+    // 📡 VISIBILITY LOG: Confirms Helius data just hit your server
+    console.log(`[📡 Webhook] Received ${txs.length} transactions from Helius.`);
+
     for (const tx of txs) {
-      // 🕵️ Dual Detector Logic: Matches original creations OR migrations
       const isNewLaunch = tx.instructions?.some(inst => inst.suggestedInstructionName === 'create');
       const isMigration = tx.type === 'CREATE_POOL' || 
                           tx.description?.toLowerCase().includes('migrat') ||
@@ -34,19 +34,22 @@ app.post('/webhook', async (req, res) => {
       
       if (!isNewLaunch && !isMigration) continue;
 
-      // Dynamic styling and cushions depending on the underlying transaction profile
-      const eventTag = isMigration ? "🚀 RAYDIUM GRADUATION / MIGRATION" : "💊 NEW PUMP.FUN LAUNCH";
+      const eventTag = isMigration ? "🚀 RAYDIUM GRADUATION" : "💊 NEW PUMP.FUN LAUNCH";
       const waitTime = isMigration ? 15000 : 45000; 
 
-      // Safely parse out the contract token address
       const tokenMint = tx.tokenTransfers?.[0]?.mint || tx.instructions?.[0]?.accounts?.[0];
-      if (!tokenMint || recentMints.has(tokenMint)) continue;
+      if (!tokenMint) continue;
 
-      // Anti-spam state machine protection
+      if (recentMints.has(tokenMint)) {
+        console.log(`[♻️ Skip] Token ${tokenMint} was already processed recently.`);
+        continue;
+      }
+
+      console.log(`[🎯 Found Match] Processing ${eventTag} for Token: ${tokenMint}`);
+
       recentMints.add(tokenMint);
       setTimeout(() => recentMints.delete(tokenMint), 60000);
 
-      // Asynchronous non-blocking security gate execution
       (async () => {
         await delay(waitTime); 
 
@@ -57,25 +60,35 @@ app.post('/webhook', async (req, res) => {
             timeout: 6000
           });
           if (gmgnResponse.data?.data) gmgnData = gmgnResponse.data.data;
-        } catch (err) {}
+        } catch (err) {
+          console.log(`[❌ API Error] Failed fetching GMGN safety details for ${tokenMint}`);
+        }
 
-        // Skip immediately if the token metrics aren't populated on GMGN yet
-        if (!gmgnData) return;
+        if (!gmgnData) {
+          console.log(`[⚠️ Skip] No security data ready on GMGN yet for ${tokenMint}`);
+          return;
+        }
 
-        // Core security metrics parsing
         const rugCount = Number(gmgnData.creator_rug_count || gmgnData.dev_rug_count || 0);
         const top10Rate = parseFloat(gmgnData.top_10_holder_rate || gmgnData.holder_concentration || 0) * 100;
         const totalCreatedCount = Number(gmgnData.token_created_count || gmgnData.creator_token_count || 0);
-        
-        // 💎 THE PRO SUGGESTION UPGRADE: Extracts exact developer control metrics
         const devShare = parseFloat(gmgnData.dev_team_hold_rate || gmgnData.creator_hold_rate || 0) * 100;
 
-        // 🛡️ THE LEGENDARY SECURITY SELECTION GATE
-        // 1. Blocks known malicious creators/ruggers
-        // 2. Blocks honeypots
-        // 3. Imposes a broad 65% boundary to prevent massive early sniper dumps
-        // 4. NEW CRITERIA: Kills tokens instantly if greedy devs hold > 15% of total supply!
-        if (rugCount > 0 || gmgnData.is_honeypot || top10Rate > 65 || devShare > 15) return;
+        // 🛡️ SECURITY AUDIT STATUS LOGS
+        if (rugCount > 0 || gmgnData.is_honeypot) {
+          console.log(`[🛑 BLOCKED] Token ${tokenMint} failed malicious threat assessment (Rug record/Honeypot).`);
+          return;
+        }
+        if (top10Rate > 65) {
+          console.log(`[🛑 BLOCKED] Token ${tokenMint} failed distribution check. Snipers own too much (${top10Rate.toFixed(1)}%).`);
+          return;
+        }
+        if (devShare > 15) {
+          console.log(`[🛑 BLOCKED] Token ${tokenMint} failed developer balance check. Dev owns too much (${devShare.toFixed(1)}%).`);
+          return;
+        }
+
+        console.log(`[🟢 SUCCESS] Token ${tokenMint} passed all safety audits! Dispatching alert to Telegram...`);
 
         const alertMessage = `
 ${eventTag}
@@ -97,7 +110,9 @@ ${eventTag}
           if (!chatId) continue;
           try {
             await bot.telegram.sendMessage(chatId, alertMessage, { parse_mode: 'HTML', disable_web_page_preview: true });
-          } catch (tgErr) {}
+          } catch (tgErr) {
+            console.log(`[❌ Telegram Error] Failed pushing message to chat ID: ${chatId}`);
+          }
         }
       })();
     }
