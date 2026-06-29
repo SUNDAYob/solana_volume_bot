@@ -22,32 +22,32 @@ setInterval(() => {
 
 app.use(express.json());
 
-app.get('/', (req, res) => res.status(200).send('🛡️ Pump.fun Graduate Scanner Active\n'));
+app.get('/', (req, res) => res.status(200).send('🛡️ Universal Security Scanner Active\n'));
 
 app.post('/webhook', async (req, res) => {
-  res.sendStatus(200); // Always free up the Helius webhook pipe instantly
+  res.sendStatus(200); // Free up Helius instantly
 
   try {
     const txs = req.body;
     if (!Array.isArray(txs) || txs.length === 0) return;
 
     for (const tx of txs) {
-      // 🎯 THE GRADUATION DETECTOR
-      // Checks if the transaction belongs to the Pump.fun Raydium Migration contract
-      const isMigration = tx.instructions?.some(inst => inst.programId === '6EF83uUk4936n7RWdqCw1LKUUY56CgdYSL5LWWTZ96K2') || 
-                          tx.type === 'CREATE_POOL';
-      
-      if (!isMigration) continue;
-
-      // Pull out the token address graduating from the curve
-      const tokenMint = tx.tokenTransfers?.[0]?.mint || tx.instructions?.[0]?.accounts?.[0];
+      // 🎯 UNIVERSAL TOKEN EXTRACTOR
+      // Grab any token mint involved in token transfers or instructions
+      const tokenMint = tx.tokenTransfers?.[0]?.mint || 
+                        tx.instructions?.[0]?.accounts?.[0] || 
+                        tx.accountData?.[0]?.account;
+                        
       if (!tokenMint || tokenMint.length < 32 || processedMints.has(tokenMint)) continue;
+
+      // Filter out native Solana or systemic account addresses
+      if (tokenMint === 'So11111111111111111111111111111111111111112' || tokenMint.endsWith('11111111')) continue;
 
       processedMints.set(tokenMint, Date.now());
       
-      console.log(`[🎓 PUMP GRADUATE] Target migrated to Raydium: ${tokenMint}. Initiating audit...`);
+      console.log(`[🔍 DETECTED] Token discovered: ${tokenMint}. Analyzing security profile...`);
 
-      // 🕒 Let Raydium pool fully initialize and let GMGN process the security profile
+      // 🕒 12-second pause to let GMGN index the fresh liquidity pool metrics
       setTimeout(async () => {
         let securityData = null;
         let tokenInfo = null;
@@ -67,41 +67,39 @@ app.post('/webhook', async (req, res) => {
           if (infoRes?.data?.data) tokenInfo = infoRes.data.data;
         } catch (err) {}
 
-        if (!securityData || !tokenInfo) {
-          console.log(`[⚠️ SKIP] Security metrics unpopulated yet for: ${tokenMint}`);
-          return;
-        }
+        if (!securityData || !tokenInfo) return;
 
-        // Strict Security Validation Layers
+        // Extract Security Metrics
         const rugCount = Number(securityData.creator_rug_count || 0);
         const top10Rate = parseFloat(securityData.top_10_holder_rate || 0) * 100;
         const devShare = parseFloat(securityData.dev_team_hold_rate || securityData.creator_balance_rate || 0) * 100;
         const mintRenounced = securityData.renounced_mint === true || securityData.renounced_mint === 'yes';
         const freezeRenounced = securityData.renounced_freeze_account === true || securityData.renounced_freeze_account === 'yes';
 
-        // 🛡️ ANTI-RUG PROTOCOLS
-        if (rugCount > 0) return; // Block known rug developers
-        if (!mintRenounced || !freezeRenounced) return; // Block unrenounced tokens
-        if (top10Rate > 65 || devShare > 15) return; // Block massive insider bundles
+        // 🛡️ THE SECURITY FILTERS
+        if (rugCount > 0) return; // Drop bad history devs
+        if (!mintRenounced || !freezeRenounced) return; // Drop unrenounced tokens
+        if (top10Rate > 65 || devShare > 15) return; // Drop heavily bundled tokens
 
         const symbol = tokenInfo.symbol || 'UNKNWN';
-        console.log(`[🟢 SUCCESS] Verified graduate: ${symbol}. Sending to channel...`);
+        console.log(`[🟢 PASSED] Verified Safe Token: ${symbol}. Sending Alert.`);
 
         const alertMessage = `
-<b>🎓 PUMP.FUN GRADUATE DEPLOYED</b>
+<b>🛡️ VERIFIED SECURE LAUNCH</b>
 ────────────────────────
 • <b>Asset:</b> ${tokenInfo.name || 'Unknown'} (${symbol})
 • <b>Contract:</b> <code>${tokenMint}</code>
 ────────────────────────
-▶ <b>GRADUATE AUDIT METRICS</b>
-• <b>Status:</b> Migrated to Raydium ✅
-• <b>Mint/Freeze Authority:</b> Renounced ✅
-• <b>Top 10 Share Rate:</b> <code>${top10Rate.toFixed(1)}%</code>
+▶ <b>SECURITY AUDIT METRICS</b>
+• <b>Dev Rug History:</b> Clean (0) ✅
+• <b>Mint Authority:</b> Renounced ✅
+• <b>Freeze Authority:</b> Renounced ✅
+• <b>Top 10 Supply Rate:</b> <code>${top10Rate.toFixed(1)}%</code>
 • <b>Dev Allocation:</b> <code>${devShare.toFixed(1)}%</code>
 ────────────────────────
-▶ <b>TRADING INTERFACES</b>
-• <a href="https://gmgn.ai/sol/token/${tokenMint}">📊 GMGN Professional Terminal</a>
-• <a href="https://t.me/solana_trojanbot?start=r-cryptonigh-${tokenMint}">⚡ Trade Instantly via Trojan Bot</a>
+▶ <b>SECURE ACTION HUB</b>
+• <a href="https://gmgn.ai/sol/token/${tokenMint}">📊 GMGN Safety Terminal</a>
+• <a href="https://t.me/solana_trojanbot?start=r-cryptonigh-${tokenMint}">⚔️ Trade Instant (Trojan Bot)</a>
 `;
 
         for (const chatId of CHAT_IDS) {
@@ -110,11 +108,11 @@ app.post('/webhook', async (req, res) => {
             await bot.telegram.sendMessage(chatId, alertMessage, { parse_mode: 'HTML', disable_web_page_preview: true });
           } catch (err) {}
         }
-      }, 15000); // 15-second delay ensures data is fresh
+      }, 12000);
     }
   } catch (err) {}
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`⚙️ [SYSTEM RUNNING] Graduate Scanner online on Port ${PORT}`);
+  console.log(`⚙️ [SYSTEM RUNNING] Universal Security Scanner online on Port ${PORT}`);
 });
