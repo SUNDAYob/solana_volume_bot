@@ -22,7 +22,7 @@ setInterval(() => {
 
 app.use(express.json());
 
-app.get('/', (req, res) => res.status(200).send('🛡️ Universal Security Scanner Active\n'));
+app.get('/', (req, res) => res.status(200).send('🛡️ Universal Security Scanner Active (Relaxed Rules)\n'));
 
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200); // Free up Helius instantly
@@ -32,8 +32,7 @@ app.post('/webhook', async (req, res) => {
     if (!Array.isArray(txs) || txs.length === 0) return;
 
     for (const tx of txs) {
-      // 🎯 UNIVERSAL TOKEN EXTRACTOR
-      // Grab any token mint involved in token transfers or instructions
+      // UNIVERSAL TOKEN EXTRACTOR
       const tokenMint = tx.tokenTransfers?.[0]?.mint || 
                         tx.instructions?.[0]?.accounts?.[0] || 
                         tx.accountData?.[0]?.account;
@@ -47,7 +46,7 @@ app.post('/webhook', async (req, res) => {
       
       console.log(`[🔍 DETECTED] Token discovered: ${tokenMint}. Analyzing security profile...`);
 
-      // 🕒 12-second pause to let GMGN index the fresh liquidity pool metrics
+      // 12-second pause to let GMGN index pool metrics
       setTimeout(async () => {
         let securityData = null;
         let tokenInfo = null;
@@ -76,10 +75,11 @@ app.post('/webhook', async (req, res) => {
         const mintRenounced = securityData.renounced_mint === true || securityData.renounced_mint === 'yes';
         const freezeRenounced = securityData.renounced_freeze_account === true || securityData.renounced_freeze_account === 'yes';
 
-        // 🛡️ THE SECURITY FILTERS
+        // 🛡️ THE RELAXED SECURITY FILTERS
         if (rugCount > 0) return; // Drop bad history devs
-        if (!mintRenounced || !freezeRenounced) return; // Drop unrenounced tokens
-        if (top10Rate > 65 || devShare > 15) return; // Drop heavily bundled tokens
+        if (!mintRenounced || !freezeRenounced) return; // Core safety constraint: Drop unrenounced tokens
+        if (top10Rate > 80) return; // Loosened up from 65% to 80% max for Top 10
+        if (devShare > 25) return;  // Loosened up from 15% to 25% max for Devs
 
         const symbol = tokenInfo.symbol || 'UNKNWN';
         console.log(`[🟢 PASSED] Verified Safe Token: ${symbol}. Sending Alert.`);
@@ -94,8 +94,8 @@ app.post('/webhook', async (req, res) => {
 • <b>Dev Rug History:</b> Clean (0) ✅
 • <b>Mint Authority:</b> Renounced ✅
 • <b>Freeze Authority:</b> Renounced ✅
-• <b>Top 10 Supply Rate:</b> <code>${top10Rate.toFixed(1)}%</code>
-• <b>Dev Allocation:</b> <code>${devShare.toFixed(1)}%</code>
+• <b>Top 10 Supply Rate:</b> <code>${top10Rate.toFixed(1)}%</code> (Max 80%)
+• <b>Dev Allocation:</b> <code>${devShare.toFixed(1)}%</code> (Max 25%)
 ────────────────────────
 ▶ <b>SECURE ACTION HUB</b>
 • <a href="https://gmgn.ai/sol/token/${tokenMint}">📊 GMGN Safety Terminal</a>
