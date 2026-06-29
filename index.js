@@ -22,7 +22,7 @@ setInterval(() => {
 
 app.use(express.json());
 
-app.get('/', (req, res) => res.status(200).send('🛡️ Universal Security Scanner Active (Relaxed Rules)\n'));
+app.get('/', (req, res) => res.status(200).send('🛡️ Universal Security Scanner Active (Dynamic Rug Rate Setup)\n'));
 
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200); // Free up Helius instantly
@@ -70,16 +70,23 @@ app.post('/webhook', async (req, res) => {
 
         // Extract Security Metrics
         const rugCount = Number(securityData.creator_rug_count || 0);
+        const totalCreated = Number(securityData.creator_token_create_count || 0);
         const top10Rate = parseFloat(securityData.top_10_holder_rate || 0) * 100;
         const devShare = parseFloat(securityData.dev_team_hold_rate || securityData.creator_balance_rate || 0) * 100;
         const mintRenounced = securityData.renounced_mint === true || securityData.renounced_mint === 'yes';
         const freezeRenounced = securityData.renounced_freeze_account === true || securityData.renounced_freeze_account === 'yes';
 
-        // 🛡️ THE RELAXED SECURITY FILTERS
-        if (rugCount > 0) return; // Drop bad history devs
-        if (!mintRenounced || !freezeRenounced) return; // Core safety constraint: Drop unrenounced tokens
-        if (top10Rate > 80) return; // Loosened up from 65% to 80% max for Top 10
-        if (devShare > 25) return;  // Loosened up from 15% to 25% max for Devs
+        // 🎯 Calculate Developer's Math Rug Rate Percentage
+        let rugRate = 0;
+        if (totalCreated > 0) {
+          rugRate = (rugCount / totalCreated) * 100;
+        }
+
+        // 🛡️ SECURITY AUDIT GATEWAY
+        if (rugRate >= 85) return;                      // Drop dev if their historical rug rate is 85% or higher
+        if (!mintRenounced || !freezeRenounced) return; // Core safety constraint: Drop unrenounced keys
+        if (top10Rate > 80) return;                     // Relaxed limit: Max 80% for Top 10
+        if (devShare > 25) return;                      // Relaxed limit: Max 25% for Dev wallets
 
         const symbol = tokenInfo.symbol || 'UNKNWN';
         console.log(`[🟢 PASSED] Verified Safe Token: ${symbol}. Sending Alert.`);
@@ -91,7 +98,7 @@ app.post('/webhook', async (req, res) => {
 • <b>Contract:</b> <code>${tokenMint}</code>
 ────────────────────────
 ▶ <b>SECURITY AUDIT METRICS</b>
-• <b>Dev Rug History:</b> Clean (0) ✅
+• <b>Dev Rug Rate:</b> <code>${rugRate.toFixed(0)}%</code> (${rugCount}/${totalCreated} Rugged)
 • <b>Mint Authority:</b> Renounced ✅
 • <b>Freeze Authority:</b> Renounced ✅
 • <b>Top 10 Supply Rate:</b> <code>${top10Rate.toFixed(1)}%</code> (Max 80%)
