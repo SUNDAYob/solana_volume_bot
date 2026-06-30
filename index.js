@@ -14,6 +14,12 @@ const MIN_SUCCESSFUL_MIGRATIONS = 2;    // Dev must have successfully migrated a
 const MIN_PAST_VOLUME_USD       = 10000;  // Dev's past successful tokens must have cleared over $10k volume
 const MAX_ALLOWED_RUG_COUNT     = 0;      // Hard floor. ZERO tolerance for explicit rug indicators
 
+// ==================== 🟢 UPTIME KEEP-ALIVE ROUTE (THE SOLUTION) ====================
+// This handles the main ping from UptimeRobot to return a clean 200 OK status
+app.get('/', (req, res) => {
+  res.status(200).send('🎯 Scanner Engine Status: Active and Awaiting Data Pipelines.');
+});
+
 // ==================== MAIN WEBHOOK PROCESSING ENGINE ====================
 app.post('/webhook', async (req, res) => {
   try {
@@ -29,7 +35,7 @@ app.post('/webhook', async (req, res) => {
     const devRugHistory     = tx.devHistory?.rugs || 0;
     const devTotalCreated   = tx.devHistory?.totalCreated || 0;
     const devMigratedCount  = tx.devHistory?.migratedCount || 0; // Tracks green checkmarks
-    const devMaxPastVolume  = tx.devHistory?.highestVolumeUsd || 0; // Tracks if they hit the $10kk+$500k runs
+    const devMaxPastVolume  = tx.devHistory?.highestVolumeUsd || 0; // Tracks if they hit the large volume runs
 
     console.log(`🔍 [SCANNING] ${tokenSymbol} | Total Launched: ${devTotalCreated} | Migrated: ${devMigratedCount} | Max Vol: $${devMaxPastVolume}`);
 
@@ -42,8 +48,7 @@ app.post('/webhook', async (req, res) => {
       return res.status(200).send('Rejected: Security risk.');
     }
 
-    // Rule 2: The GMGN "Green Check" Matrix (Matching your screenshot behavior)
-    // Checks if the dev regularly migrates tokens AND prints actual trading volume
+    // Rule 2: The GMGN "Green Check" Matrix
     if (devMigratedCount >= MIN_SUCCESSFUL_MIGRATIONS && devMaxPastVolume >= MIN_PAST_VOLUME_USD) {
       console.log(`👑 [ELITE PASS] Match found. Dev has ${devMigratedCount} migrations and proven market volume.`);
       isEliteDeveloper = true;
@@ -51,7 +56,7 @@ app.post('/webhook', async (req, res) => {
 
     // ==================== ROUTING SYSTEM ====================
     if (!isEliteDeveloper) {
-      console.log(`❌ [REJECTED] Dev does not meet Elite Track criteria (Insufficient high-volume track record).`);
+      console.log(`❌ [REJECTED] Dev does not meet Elite Track criteria.`);
       return res.status(200).send('Rejected: Standard tracking parameters unmet.');
     }
 
