@@ -8,118 +8,124 @@ app.use(express.json());
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_IDS = process.env.TELEGRAM_CHAT_ID ? process.env.TELEGRAM_CHAT_ID.split(',') : [];
 const GMGN_API_KEY = process.env.GMGN_API_KEY; 
-
 const bot = new Telegraf(BOT_TOKEN);
 
+const processedTokens = new Set();
+
 app.get('/', (req, res) => {
-  res.status(200).send('🛡️ GMGN Guard Intelligence Pipe is Active.');
+  res.status(200).send('🛰️ GMGN Direct Poller Active.');
 });
 
-app.post('/webhook', async (req, res) => {
+async function scanNewPairs() {
   try {
-    const data = req.body;
-    if (!data || !Array.isArray(data) || data.length === 0) return res.status(200).send('Empty');
-
-    const tx = data[0];
-    const tokenUpdate = tx.tokenUpdates?.[0];
-    if (!tokenUpdate) return res.status(200).send('No token data');
-
-    const tokenMint = tokenUpdate.mint;
-    const tokenSymbol = tokenUpdate.symbol || 'UNNAMED';
-
-    if (!tokenMint || tokenMint === 'Unknown') return res.status(200).send('Invalid Mint');
-
-    console.log(`🔍 Intercepted launch: ${tokenSymbol}. Fetching GMGN Security Data...`);
-
-    // Fetch deep analytics from GMGN API
-    const gmgnResponse = await axios.get(`https://v1.api.gmgn.ai/v1/token/security/sol/${tokenMint}`, {
-      headers: { 'Authorization': `Bearer ${GMGN_API_KEY}` }
+    console.log("⏳ Fetching latest Solana pairs from GMGN...");
+    
+    // Added a 10-second timeout configuration to prevent silent hanging
+    const response = await axios.get('https://v1.api.gmgn.ai/v1/market/new_pairs/sol?limit=20', {
+      headers: { 'Authorization': `Bearer ${GMGN_API_KEY}` },
+      timeout: 10000 
     });
 
-    if (!gmgnResponse.data || !gmgnResponse.data.data) {
-      console.log(`⚠️ GMGN Data not ready for ${tokenSymbol}. Skipping to prevent risk.`);
-      return res.status(200).send('Data Unavailable');
+    if (!response.data || !response.data.data || !response.data.data.pairs) {
+      console.log("ℹ️ No new pairs found in this tick.");
+      return;
     }
 
-    const info = gmgnResponse.data.data;
+    const pairs = response.data.data.pairs;
+    console.log(`👀 Processing ${pairs.length} pairs from feed...`);
 
-    // ==================== THE 7 CRITICAL SECURITY FILTERS ====================
+    for (const pair of pairs) {
+      const tokenMint = pair.token_address;
+      const tokenSymbol = pair.symbol || 'UNNAMED';
 
-    // 1. Block Honey Pots & Known Scam Signals
-    if (info.is_honeypot || info.rug_ratio > 0.25) { 
-      console.log(`❌ [BLOCKED] ${tokenSymbol} flagged as Honeypot or High Rug Risk (${info.rug_ratio}).`);
-      return res.status(200).send('Filtered');
+      if (processedTokens.has(tokenMint)) continue;
+      processedTokens.add(tokenMint);
+      if (processedTokens.size > 500) processedTokens.delete(processedTokens.values().next().value);
+
+      const secResponse = await axios.get(`https://v1.api.gmgn.ai/v1/token/security/sol/${tokenMint}`, {
+        headers: { 'Authorization': `Bearer ${GMGN_API_KEY}` },
+        timeout: 10000
+      });
+
+      if (!secResponse.data || !secResponse.data.data) continue;
+      const info = secResponse.data.data;
+
+      // 1. Honey Pot / Rugs
+      if (info.is_honeypot || info.rug_ratio > 0.20) {
+        console.log(`❌ [BLOCKED] ${tokenSymbol} Honeypot or bad Rug Score.`);
+        continue;
+      }
+
+      // 2. Concentration Check
+      const top10Percentage = info.top_10_holder_percentage || 0;
+      if (top10Percentage > 30) {
+        console.log(`❌ [BLOCKED] ${tokenSymbol} Failed Concentration: Top 10 holds ${top10Percentage}%.`);
+        continue;
+      }
+
+      // 3. Liquidity Status
+      if (!info.liquidity_is_burned && !info.liquidity_is_locked) {
+        console.log(`❌ [BLOCKED] ${tokenSymbol} has unlocked/unburned LP tokens.`);
+        continue;
+      }
+
+      // 4. Mint Authority
+      if (info.is_mintable || !info.renounced_mint) {
+        console.log(`❌ [BLOCKED] ${tokenSymbol} has active mint authority.`);
+        continue;
+      }
+
+      // 5. Volume Indices
+      const poolLiquidity = pair.liquidity || 0;
+      const volume5m = pair.volume_5m || 0;
+      if (poolLiquidity < 15000 && volume5m < 5000) {
+        console.log(`❌ [BLOCKED] ${tokenSymbol} Low starting liquidity/volatility index.`);
+        continue;
+      }
+
+      const kolCount = info.kol_holder_count || 0;
+      const smartMoneyCount = info.smart_degen_count || 0;
+      const whaleBuyActive = info.whale_buy_detected || false;
+
+      console.log(`🎯 [PASSED ALL SCREENING SELECTION] Dispatching secure coin: ${tokenSymbol}`);
+
+      const template = 
+        `🔥 **GMGN INTELLIGENCE LAUNCH FILTERED** 🔥\n` +
+        `----------------------------------------\n` +
+        `• **Asset:** ${tokenSymbol}\n` +
+        `• **Contract:** \`${tokenMint}\`\n` +
+        `----------------------------------------\n` +
+        `🛡️ **COMPLIANCE CHECKS:**\n` +
+        `• Top 10 Allocation: \`${top10Percentage.toFixed(1)}%\` (Limit < 30%)\n` +
+        `• Mint Function: \`DEACTIVATED/RENOUNCED ✅\`\n` +
+        `• Pool Condition: \`LOCKED/BURNED 🔥\`\n` +
+        `• Honeypot Trap: \`CLEAN 🟢\`\n` +
+        `----------------------------------------\n` +
+        `🐋 **DASHBOARD INSIGHTS:**\n` +
+        `• KOL Wallets Injected: \`${kolCount}\` \n` +
+        `• Smart Money Buyers: \`${smartMoneyCount}\` \n` +
+        `• Massive Whale Buys: \`${whaleBuyActive ? '🚨 YES' : 'NO'}\`\n` +
+        `----------------------------------------\n` +
+        `▶️ **DIRECT HANDLES**\n` +
+        `• 📊 [GMGN Terminal](https://gmgn.ai/sol/token/${tokenMint})\n` +
+        `• ⚔️ [Sniping Portal (Trojan)](https://t.me/solana_trojanbot?start=r-user-${tokenMint})`;
+
+      for (const chatId of CHAT_IDS) {
+        await bot.telegram.sendMessage(chatId, template, { parse_mode: 'Markdown', disable_web_preview: true });
+      }
     }
-
-    // 2. Limit Top 10 Holder Concentration (Must not hold over 30%)
-    const top10Holding = info.top_10_holder_percentage || 0; 
-    if (top10Holding > 30) {
-      console.log(`❌ [BLOCKED] ${tokenSymbol} failed Whale Concentration: Top 10 holds ${top10Holding}%.`);
-      return res.status(200).send('Filtered');
-    }
-
-    // 3. Liquidity Status Verification (Must be locked or burned)
-    if (!info.liquidity_is_burned && !info.liquidity_is_locked) {
-      console.log(`❌ [BLOCKED] ${tokenSymbol} has UNLOCKED/UNBURNED liquidity. High dev pool-pull risk.`);
-      return res.status(200).send('Filtered');
-    }
-
-    // 4. Block Mintable Tokens
-    if (info.is_mintable || !info.renounced_mint) {
-      console.log(`❌ [BLOCKED] ${tokenSymbol} Authority isn't renounced. Supply is mintable.`);
-      return res.status(200).send('Filtered');
-    }
-
-    // 5. High Volatility / Volume Potential Threshold Check
-    const volume24h = info.volume_24h_usd || 0;
-    const liquidityUsd = info.liquidity_usd || 0;
-    if (liquidityUsd < 10000 && volume24h < 5000) { 
-      console.log(`❌ [BLOCKED] ${tokenSymbol} low market entry momentum.`);
-      return res.status(200).send('Filtered');
-    }
-
-    // 6. Track KOL and Whale Buys (Bullish Signals)
-    const kolCount = info.kol_holder_count || 0;
-    const smartMoneyCount = info.smart_degen_count || 0; 
-    const hasWhaleActivity = info.whale_buy_detected || false; 
-
-    console.log(`🎯 [PASSED ALL FILTERS] ${tokenSymbol} is clean. Sending verification payload...`);
-
-    // ==================== PREMIUM VERIFIED LAYOUT ====================
-    const securityLayout = 
-      `🛡️ **GMGN VERIFIED SECURE LAUNCH** 🛡️\n` +
-      `----------------------------------------\n` +
-      `• **Asset:** ${tokenSymbol}\n` +
-      `• **Contract:** \`${tokenMint}\`\n` +
-      `----------------------------------------\n` +
-      `📊 **RISK ASSESSMENT METRICS:**\n` +
-      `• Top 10 Share: \`${top10Holding.toFixed(1)}%\` (Safe < 30%)\n` +
-      `• Mint Authority: \`RENOUNCED ✅\`\n` +
-      `• Liquidity: \`LOCKED/BURNED 🔥\`\n` +
-      `• Rug Score: \`${info.rug_ratio || 0} / 1.0\`\n` +
-      `----------------------------------------\n` +
-      `🐋 **SMART RADAR INSIGHTS:**\n` +
-      `• Tracking KOL Wallets: \`${kolCount}\` in position\n` +
-      `• Smart Money Degens: \`${smartMoneyCount}\` buying\n` +
-      `• Massive Whale Buys: \`${hasWhaleActivity ? '⚠️ YES' : 'NONE'}\`\n` +
-      `----------------------------------------\n` +
-      `▶️ **DIRECT SNIPE EXECUTION:**\n` +
-      `• 📊 [GMGN Terminal](https://gmgn.ai/sol/token/${tokenMint})\n` +
-      `• ⚔️ [Sniper Link (Trojan)](https://t.me/solana_trojanbot?start=r-user-${tokenMint})`;
-
-    for (const chatId of CHAT_IDS) {
-      await bot.telegram.sendMessage(chatId, securityLayout, { parse_mode: 'Markdown', disable_web_preview: true });
-    }
-
-    res.status(200).send('Dispatched');
-
-  } catch (error) {
-    console.error('💥 Guard Execution Error:', error.message);
-    res.status(500).send('Error');
+  } catch (err) {
+    console.error("⚠️ Loop Poll Incident:", err.message);
   }
-});
+}
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`GMGN Intel Guard online on port ${PORT}`);
+  
+  // EXECUTE IMMEDIATELY ON BOOT
+  scanNewPairs();
+  
+  // Then schedule followups every 5 seconds
+  setInterval(scanNewPairs, 5000);
 });
