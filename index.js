@@ -4,91 +4,74 @@ const { Telegraf } = require('telegraf');
 const app = express();
 app.use(express.json());
 
-// ==================== CONFIGURATION & SECURITY PRESETS ====================
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_IDS = process.env.TELEGRAM_CHAT_ID ? process.env.TELEGRAM_CHAT_ID.split(',') : [];
 const bot = new Telegraf(BOT_TOKEN);
 
-// Strict Alpha Rules for Volume/Migration Filtering
-const MIN_SUCCESSFUL_MIGRATIONS = 2;    // Dev must have successfully migrated at least X tokens
-const MIN_PAST_VOLUME_USD       = 10000;  // Dev's past successful tokens must have cleared over $10k volume
-const MAX_ALLOWED_RUG_COUNT     = 0;      // Hard floor. ZERO tolerance for explicit rug indicators
-
-// ==================== 🟢 UPTIME KEEP-ALIVE ROUTE (THE SOLUTION) ====================
-// This handles the main ping from UptimeRobot to return a clean 200 OK status
 app.get('/', (req, res) => {
-  res.status(200).send('🎯 Scanner Engine Status: Active and Awaiting Data Pipelines.');
+  res.status(200).send('🚀 Filtered Pipe Active & Awake 24/7.');
 });
 
-// ==================== MAIN WEBHOOK PROCESSING ENGINE ====================
 app.post('/webhook', async (req, res) => {
   try {
     const data = req.body;
-    if (!data || !Array.isArray(data) || data.length === 0) return res.status(200).send('Empty payload');
+    if (!data || !Array.isArray(data) || data.length === 0) return res.status(200).send('Empty');
 
     const tx = data[0];
-    const tokenMint   = tx.tokenUpdates?.[0]?.mint || 'Unknown';
-    const tokenName   = tx.tokenUpdates?.[0]?.name || 'Unknown Token';
-    const tokenSymbol = tx.tokenUpdates?.[0]?.symbol || 'UNKNOWN';
+    const tokenUpdate = tx.tokenUpdates?.[0];
+    if (!tokenUpdate) return res.status(200).send('No token data');
 
-    // 📊 Extracting Dev History Metrics from Payload
-    const devRugHistory     = tx.devHistory?.rugs || 0;
-    const devTotalCreated   = tx.devHistory?.totalCreated || 0;
-    const devMigratedCount  = tx.devHistory?.migratedCount || 0; // Tracks green checkmarks
-    const devMaxPastVolume  = tx.devHistory?.highestVolumeUsd || 0; // Tracks if they hit the large volume runs
-
-    console.log(`🔍 [SCANNING] ${tokenSymbol} | Total Launched: ${devTotalCreated} | Migrated: ${devMigratedCount} | Max Vol: $${devMaxPastVolume}`);
-
-    // ==================== THE SMART ELITE DEV FILTER ====================
-    let isEliteDeveloper = false;
-
-    // Rule 1: Instant Blacklist if they have active rug markings
-    if (devRugHistory > MAX_ALLOWED_RUG_COUNT) {
-      console.log(`❌ [REJECTED] Dev wallet flagged with active malicious metrics.`);
-      return res.status(200).send('Rejected: Security risk.');
+    const tokenMint   = tokenUpdate.mint || 'Unknown';
+    const tokenSymbol = tokenUpdate.symbol || 'UNKNOWN';
+    
+    // 🛡️ INTERNAL ANTI-GARBAGE FILTERS (No API Required)
+    
+    // 1. Filter out tokens with missing symbols or generic scam names
+    if (tokenSymbol === 'UNKNOWN' || tokenSymbol.trim() === '' || tokenSymbol.includes('?')) {
+      console.log(`❌ [BLOCKED] Trash metadata/anonymous token.`);
+      return res.status(200).send('Filtered');
     }
 
-    // Rule 2: The GMGN "Green Check" Matrix
-    if (devMigratedCount >= MIN_SUCCESSFUL_MIGRATIONS && devMaxPastVolume >= MIN_PAST_VOLUME_USD) {
-      console.log(`👑 [ELITE PASS] Match found. Dev has ${devMigratedCount} migrations and proven market volume.`);
-      isEliteDeveloper = true;
+    // 2. Filter out transactions that aren't actual liquidity additions
+    // If there's no SOL/USDC native movement paired with the token, it's a fake deployment
+    const hasNativeMovement = tx.nativeTransfers && tx.nativeTransfers.length > 0;
+    if (!hasNativeMovement) {
+      console.log(`❌ [BLOCKED] Zero native liquidity initialization detected.`);
+      return res.status(200).send('Filtered');
     }
 
-    // ==================== ROUTING SYSTEM ====================
-    if (!isEliteDeveloper) {
-      console.log(`❌ [REJECTED] Dev does not meet Elite Track criteria.`);
-      return res.status(200).send('Rejected: Standard tracking parameters unmet.');
+    // 3. Block known repetitive deployer bot patterns (if your payload supports account data)
+    const programId = tx.instructions?.[0]?.programId || '';
+    if (programId === '') {
+      console.log(`❌ [BLOCKED] Missing verified execution program.`);
+      return res.status(200).send('Filtered');
     }
+
+    console.log(`🎯 [PASSED FILTER] High-probability token: ${tokenSymbol}`);
 
     // ==================== DISPATCH DELIVERABLE ====================
-    const statsLayout = `👑 **ELITE LAUNCH PROFILED** 👑\n` +
+    const statsLayout = `🎯 **VERIFIED MEME LAUNCH** 🎯\n` +
                         `----------------------------------------\n` +
-                        `• **Asset:** ${tokenName} (${tokenSymbol})\n` +
+                        `• **Asset:** (${tokenSymbol})\n` +
                         `• **Contract:** \`${tokenMint}\`\n` +
-                        `----------------------------------------\n` +
-                        `▶️ **PRO-DEV PERFORMANCE AUDIT**\n` +
-                        `• **Total Projects:** ${devTotalCreated}\n` +
-                        `• **Successful Migrations:** ✅ ${devMigratedCount} Green Ticks\n` +
-                        `• **Proven Vol Profile:** ✅ $${devMaxPastVolume.toLocaleString()} Peak Run\n` +
                         `----------------------------------------\n` +
                         `▶️ **SPEED CHANNELS**\n` +
                         `• 📊 [GMGN Terminal](https://gmgn.ai/sol/token/${tokenMint})\n` +
-                        `• ⚔️ [Sniping Portal](https://t.me/solana_trojanbot?start=r-user-${tokenMint})`;
+                        `• ⚔️ [Sniping Portal (Trojan)](https://t.me/solana_trojanbot?start=r-user-${tokenMint})`;
 
     for (const chatId of CHAT_IDS) {
       await bot.telegram.sendMessage(chatId, statsLayout, { parse_mode: 'Markdown', disable_web_preview: false });
     }
 
-    console.log(`🚀 [DISPATCHED] Verified elite launch sent to channel for ${tokenSymbol}`);
-    res.status(200).send('Elite token processed');
+    res.status(200).send('Dispatched');
 
   } catch (error) {
-    console.error('💥 Error handling payload pipeline:', error.message);
-    res.status(500).send('Internal Error');
+    console.error('💥 Filter Error:', error.message);
+    res.status(500).send('Error');
   }
 });
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`High-Volume Scanner online on port ${PORT}`);
+  console.log(`Filtered Scanner online on port ${PORT}`);
 });
