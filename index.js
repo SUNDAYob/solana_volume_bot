@@ -20,8 +20,8 @@ async function scanNewPairs() {
   try {
     console.log("⏳ Fetching latest Solana pairs from GMGN...");
     
-    // CHANGED TO CORRECT API ENDPOINT PATH
-    const response = await axios.get('https://api.gmgn.ai/v1/market/new_pairs/sol?limit=20', {
+    // UPDATED TO DIRECT FLAT DOMAIN
+    const response = await axios.get('https://gmgn.ai/v1/market/new_pairs/sol?limit=20', {
       headers: { 'Authorization': `Bearer ${GMGN_API_KEY}` },
       timeout: 10000 
     });
@@ -42,8 +42,8 @@ async function scanNewPairs() {
       processedTokens.add(tokenMint);
       if (processedTokens.size > 500) processedTokens.delete(processedTokens.values().next().value);
 
-      // CHANGED TO CORRECT API ENDPOINT PATH
-      const secResponse = await axios.get(`https://api.gmgn.ai/v1/token/security/sol/${tokenMint}`, {
+      // UPDATED TO DIRECT FLAT DOMAIN
+      const secResponse = await axios.get(`https://gmgn.ai/v1/token/security/sol/${tokenMint}`, {
         headers: { 'Authorization': `Bearer ${GMGN_API_KEY}` },
         timeout: 10000
       });
