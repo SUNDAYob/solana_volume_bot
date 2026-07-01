@@ -20,8 +20,8 @@ async function scanNewPairs() {
   try {
     console.log("⏳ Fetching latest Solana pairs from GMGN...");
     
-    // Added a 10-second timeout configuration to prevent silent hanging
-    const response = await axios.get('https://v1.api.gmgn.ai/v1/market/new_pairs/sol?limit=20', {
+    // CHANGED TO CORRECT API ENDPOINT PATH
+    const response = await axios.get('https://api.gmgn.ai/v1/market/new_pairs/sol?limit=20', {
       headers: { 'Authorization': `Bearer ${GMGN_API_KEY}` },
       timeout: 10000 
     });
@@ -42,7 +42,8 @@ async function scanNewPairs() {
       processedTokens.add(tokenMint);
       if (processedTokens.size > 500) processedTokens.delete(processedTokens.values().next().value);
 
-      const secResponse = await axios.get(`https://v1.api.gmgn.ai/v1/token/security/sol/${tokenMint}`, {
+      // CHANGED TO CORRECT API ENDPOINT PATH
+      const secResponse = await axios.get(`https://api.gmgn.ai/v1/token/security/sol/${tokenMint}`, {
         headers: { 'Authorization': `Bearer ${GMGN_API_KEY}` },
         timeout: 10000
       });
@@ -122,10 +123,6 @@ async function scanNewPairs() {
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`GMGN Intel Guard online on port ${PORT}`);
-  
-  // EXECUTE IMMEDIATELY ON BOOT
   scanNewPairs();
-  
-  // Then schedule followups every 5 seconds
   setInterval(scanNewPairs, 5000);
 });
