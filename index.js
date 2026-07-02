@@ -20,9 +20,13 @@ async function scanNewPairs() {
   try {
     console.log("⏳ Fetching latest Solana pairs from GMGN...");
     
-    // UPDATED TO DIRECT FLAT DOMAIN
-    const response = await axios.get('https://gmgn.ai/v1/market/new_pairs/sol?limit=20', {
-      headers: { 'Authorization': `Bearer ${GMGN_API_KEY}` },
+    // Configured with browser signatures and developer gateway routing
+    const response = await axios.get('https://v1.api.gmgn.ai/v1/market/new_pairs/sol?limit=20', {
+      headers: { 
+        'Authorization': `Bearer ${GMGN_API_KEY}`,
+        'accept': 'application/json',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
       timeout: 10000 
     });
 
@@ -42,9 +46,12 @@ async function scanNewPairs() {
       processedTokens.add(tokenMint);
       if (processedTokens.size > 500) processedTokens.delete(processedTokens.values().next().value);
 
-      // UPDATED TO DIRECT FLAT DOMAIN
-      const secResponse = await axios.get(`https://gmgn.ai/v1/token/security/sol/${tokenMint}`, {
-        headers: { 'Authorization': `Bearer ${GMGN_API_KEY}` },
+      const secResponse = await axios.get(`https://v1.api.gmgn.ai/v1/token/security/sol/${tokenMint}`, {
+        headers: { 
+          'Authorization': `Bearer ${GMGN_API_KEY}`,
+          'accept': 'application/json',
+          'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        },
         timeout: 10000
       });
 
